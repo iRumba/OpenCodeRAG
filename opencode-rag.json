@@ -3,8 +3,8 @@
     "provider": "ollama",
     "baseUrl": "http://127.0.0.1:11434/api",
     "apiKey": "",
-    "model": "embeddinggemma",
-    "timeoutMs": 30000,
+    "model": "snowflake-arctic-embed2:latest",
+    "timeoutMs": 5000,
     "proxy": {
       "url": "",
       "username": "",

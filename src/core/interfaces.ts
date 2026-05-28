@@ -23,7 +23,10 @@ export interface Chunker {
 
 export interface EmbeddingProvider {
   readonly name: string;
-  embed(texts: string[]): Promise<number[][]>;
+  // The provider may return numeric embeddings (`number[][]`) or,
+  // in some configurations (e.g. Ollama text-only mode), the original
+  // texts as `string[][]`. Consumers must handle both shapes.
+  embed(texts: string[]): Promise<number[][] | string[][]>;
 }
 
 export interface VectorStore {

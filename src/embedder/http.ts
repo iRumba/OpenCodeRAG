@@ -195,6 +195,9 @@ async function sendRawHttpRequest(
 
     const chunks: Buffer[] = [];
     let settled = false;
+    let headerEndIndex = -1;
+    let expectedBodyLength = -1;
+    let isChunked = false;
 
     const settle = (fn: () => void) => {
       if (settled) return;
@@ -216,6 +219,56 @@ async function sendRawHttpRequest(
 
     socket.on("data", (chunk) => {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      if (settled) return;
+
+      const assembled = Buffer.concat(chunks);
+
+      if (headerEndIndex < 0) {
+        headerEndIndex = assembled.indexOf(Buffer.from("\r\n\r\n"));
+        if (headerEndIndex < 0) return;
+
+        const headerText = assembled.slice(0, headerEndIndex).toString("utf8");
+        const lines = headerText.split("\r\n");
+        for (let i = 1; i < lines.length; i++) {
+          const line = (lines[i] ?? "").trim();
+          if (!line) continue;
+          const idx = line.indexOf(":");
+          if (idx < 0) continue;
+          const name = line.slice(0, idx).trim().toLowerCase();
+          const value = line.slice(idx + 1).trim();
+          if (name === "content-length") {
+            expectedBodyLength = Number.parseInt(value, 10);
+          }
+          if (name === "transfer-encoding" && value.toLowerCase().includes("chunked")) {
+            isChunked = true;
+          }
+        }
+      }
+
+      const bodyBuffer = assembled.slice(headerEndIndex + 4);
+
+      if (expectedBodyLength >= 0) {
+        if (bodyBuffer.length >= expectedBodyLength) {
+          settle(() => {
+            socket.destroy();
+            resolve(assembled.slice(0, headerEndIndex + 4 + expectedBodyLength));
+          });
+        }
+        return;
+      }
+
+      if (isChunked) {
+        if (bodyBuffer.length >= 7) {
+          const tail = bodyBuffer.slice(-7).toString("ascii");
+          if (tail === "\r\n0\r\n\r\n") {
+            settle(() => {
+              socket.destroy();
+              resolve(assembled);
+            });
+          }
+        }
+        return;
+      }
     });
 
     socket.on("end", () => {

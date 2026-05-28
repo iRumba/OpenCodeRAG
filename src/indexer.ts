@@ -232,7 +232,15 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
     );
 
     for (let i = 0; i < chunks.length; i++) {
-      chunks[i]!.embedding = embeddings[i];
+      const emb = embeddings[i];
+      if (Array.isArray(emb) && emb.length > 0 && typeof emb[0] === "number") {
+        chunks[i]!.embedding = emb as number[];
+      } else {
+        // Provider returned non-numeric embeddings (e.g. text-only).
+        // Leave `embedding` undefined so the chunk isn't stored in the
+        // vector store (addChunks filters out missing/empty embeddings).
+        chunks[i]!.embedding = undefined;
+      }
     }
 
     chunkBatch.push(...chunks);

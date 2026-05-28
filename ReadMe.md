@@ -233,7 +233,7 @@ The plugin auto-detects configuration from `opencode-rag.json` or
 `.opencode/rag.json` in the project root.
 
 If you use the project-local plugin file, OpenCode auto-loads it from
-`.opencode/plugins/` at startup and no `plugin` entry is required in
+`.opencode/plugins/` at startup and no `plugin` entry is required i
 `.opencode/opencode.json`.
 
 Restart OpenCode after changing plugin files or plugin configuration.

@@ -137,7 +137,10 @@ program
 
       // Detect actual vector dimension from the model
       const probe = await embedder.embed(["dimension-probe"]);
-      const vectorDimension = probe[0]?.length ?? 384;
+      let vectorDimension = 384;
+      if (probe && probe[0] && probe[0].length > 0 && typeof probe[0][0] === "number") {
+        vectorDimension = (probe[0] as number[]).length;
+      }
       logCliInfo(logFilePath, "index", `  Vector dimension:   ${vectorDimension}`);
 
       const store = new LanceDBStore(

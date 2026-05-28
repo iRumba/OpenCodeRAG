@@ -18,5 +18,11 @@ export async function retrieve(
     return [];
   }
 
-  return store.search(embedding, topK);
+  // If the provider returned text (string[][]) instead of numeric vectors,
+  // bail out — we can't perform a vector search without numeric embeddings.
+  if (typeof embedding[0] !== "number") {
+    return [];
+  }
+
+  return store.search(embedding as number[], topK);
 }
