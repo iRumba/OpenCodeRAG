@@ -3,19 +3,24 @@
   "version": "0.1.0",
   "description": "OpenCode plugin for local-first RAG-based semantic code search",
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/plugin-entry.js",
+  "module": "./dist/plugin-entry.js",
+  "types": "./dist/plugin-entry.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": "./dist/plugin-entry.js",
+      "require": "./dist/plugin-entry.js",
+      "types": "./dist/plugin-entry.d.ts"
     },
     "./server": {
       "import": "./dist/plugin-entry.js",
       "require": "./dist/plugin-entry.js",
       "types": "./dist/plugin-entry.d.ts"
+    },
+    "./library": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     }
   },
   "files": [

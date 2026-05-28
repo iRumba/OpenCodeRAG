@@ -75,4 +75,41 @@ describe("OpenAIProvider", () => {
     );
     assert.ok(p);
   });
+
+  it("aborts slow embedding requests instead of hanging forever", async () => {
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+      const signal = init?.signal;
+      return await new Promise<Response>((_resolve, reject) => {
+        if (signal) {
+          signal.addEventListener(
+            "abort",
+            () => {
+              const error = new Error("Aborted");
+              error.name = "AbortError";
+              reject(error);
+            },
+            { once: true }
+          );
+        }
+      });
+    }) as typeof fetch;
+
+    try {
+      const p = new OpenAIProvider(
+        "https://api.openai.com/v1",
+        "text-embedding-3-small",
+        "sk-test-key",
+        1
+      );
+
+      await assert.rejects(
+        () => p.embed(["test"]),
+        /timed out after 1ms/
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

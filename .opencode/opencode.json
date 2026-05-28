@@ -1,7 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
-    "..\\opencode-rag-0.1.0.tgz",
-    ".\\opencode-rag-0.1.0.tgz"
+    "opencode-rag"
   ]
 }

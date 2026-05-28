@@ -47,12 +47,16 @@
 
 # 💡 Brainstorming: Future Enhancements
 
-## 1. 🔁 Incremental Indexing
+## 1. 🔁 Incremental Indexing + Watch Mode
 
 Implemented with a manifest sidecar beside the LanceDB dataset. Indexing now
 hashes files, skips unchanged files, updates modified files, removes deleted or
 empty files, and safely rebuilds if the manifest is missing or corrupt while
 the store already contains rows.
+
+Watch mode (`index --watch`) uses chokidar to trigger debounced incremental
+passes on add/change/unlink events. Passes are serialized — a queued follow-up
+pass runs after the current pass finishes.
 
 ## 2. 🧠 Query Enhancement
 

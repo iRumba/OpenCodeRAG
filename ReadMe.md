@@ -6,7 +6,7 @@ embeddings and vector similarity.
 ## Features
 
 - **AST-aware chunking** — splits code into functions, classes, methods using
-  tree-sitter (22 languages supported). Falls back to line-based chunking for
+  tree-sitter (16 languages + 3 markup/config formats). Falls back to line-based chunking for
   unrecognized formats.
 - **Incremental indexing** — manifest-backed indexing skips unchanged files,
   removes deleted entries, and updates only changed files.
@@ -18,8 +18,8 @@ embeddings and vector similarity.
 - **Local vector store** — LanceDB with L2 distance scoring, memory mode for
   testing.
 - **CLI** — index, query, clear, status commands.
-- **OpenCode plugin** — chat.message hook injects relevant code context into
-  prompts.
+- **OpenCode plugin** — injects relevant code context into prompts and file/code
+  search tool results.
 
 ## Architecture
 
@@ -187,11 +187,16 @@ manifest file itself. Press `Ctrl+C` to stop.
 
 ### OpenCode Plugin
 
-The plugin hooks into the `chat.message` pipeline:
-1. Extracts the user's message from chat parts
-2. Runs the retriever with the message as query
+The plugin hooks into:
+1. `chat.message` to retrieve context from the user's prompt before the LLM runs
+2. `tool.execute.after` for `glob`, `grep`, `read`, and `list` so retrieved
+   context is also appended when OpenCode searches for files or code
+
+In both cases it:
+1. Builds a retrieval query from the prompt or tool output
+2. Runs semantic retrieval against the indexed workspace
 3. Formats top results as code blocks with file path and line numbers
-4. Injects formatted context as a text part before LLM processing
+4. Injects the formatted context back into the active OpenCode flow
 
 Errors during retrieval are silently caught — a failed search won't break the
 chat.
@@ -201,8 +206,8 @@ chat.
 After cloning and installing dependencies:
 
 ```bash
-# Option 1: Copy the plugin file directly (no build needed)
-copy src\plugin.ts .opencode\plugins\rag-plugin.ts
+# Option 1: Use the project-local auto-loaded plugin
+# The repo already includes .opencode/plugins/rag-plugin.ts
 
 # Option 2: Build and install via npm pack
 npm run build
@@ -215,6 +220,12 @@ opencode plugin opencode-rag
 
 The plugin auto-detects configuration from `opencode-rag.json` or
 `.opencode/rag.json` in the project root.
+
+If you use the project-local plugin file, OpenCode auto-loads it from
+`.opencode/plugins/` at startup and no `plugin` entry is required in
+`.opencode/opencode.json`.
+
+Restart OpenCode after changing plugin files or plugin configuration.
 
 ## Data Model
 
@@ -291,7 +302,7 @@ interface Chunker {
 ### Programmatic
 
 ```typescript
-import { registerChunker } from "opencode-rag";
+import { registerChunker } from "opencode-rag/library";
 registerChunker(myChunker, [".rs"]);
 ```
 
@@ -345,8 +356,8 @@ imports. No test library dependencies.
 ## Limitations
 
 - Embedding model must support 384-dimensional vectors (default seed row size)
-- 18 built-in chunkers (AST for 14 languages, regex for 4) + configurable fallback
-- Watch mode is CLI-only; the OpenCode plugin remains query-only
+- 19 built-in chunkers (AST for 16, regex for 3) + configurable fallback
+- Watch mode is CLI-only; the OpenCode plugin augments prompts and file/code search results but does not index automatically
 
 ## Privacy
 

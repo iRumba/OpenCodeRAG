@@ -29,6 +29,14 @@ declare module "@opencode-ai/plugin" {
       input: { sessionID: string; agent: string; model: Model; provider: { source: string; info: Provider; options: Record<string, unknown> }; message: UserMessage },
       output: { temperature: number; topP: number; topK: number; maxOutputTokens: number | undefined; options: Record<string, unknown> }
     ) => Promise<void>;
+    "tool.execute.before"?: (
+      input: { tool: string; sessionID: string; callID: string },
+      output: { args: Record<string, unknown> }
+    ) => Promise<void>;
+    "tool.execute.after"?: (
+      input: { tool: string; sessionID: string; callID: string },
+      output: { title: string; output: string; metadata: unknown }
+    ) => Promise<void>;
     "experimental.chat.messages.transform"?: (
       input: Record<string, never>,
       output: { messages: { info: Message; parts: Part[] }[] }
