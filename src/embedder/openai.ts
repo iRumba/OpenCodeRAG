@@ -1,4 +1,5 @@
 import type { EmbeddingProvider } from "../core/interfaces.js";
+import { postJson } from "./http.js";
 
 export class OpenAIProvider implements EmbeddingProvider {
   readonly name = "openai";
@@ -16,28 +17,12 @@ export class OpenAIProvider implements EmbeddingProvider {
   }
 
   async embed(texts: string[]): Promise<number[][]> {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), this.timeoutMs);
-    let response: Response;
-
-    try {
-      response = await fetch(`${this.baseUrl}/embeddings`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-        body: JSON.stringify({ model: this.model, input: texts }),
-        signal: controller.signal,
-      });
-    } catch (err: any) {
-      if (err && (err.name === "AbortError" || err.code === "ABORT_ERR")) {
-        throw new Error(`OpenAI embedding timed out after ${this.timeoutMs}ms`);
-      }
-      throw err;
-    } finally {
-      clearTimeout(id);
-    }
+    const response = await postJson(
+      `${this.baseUrl}/embeddings`,
+      { model: this.model, input: texts },
+      { Authorization: `Bearer ${this.apiKey}` },
+      this.timeoutMs
+    );
 
     if (!response.ok) {
       const body = await response.text();

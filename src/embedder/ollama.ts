@@ -1,4 +1,5 @@
 import type { EmbeddingProvider } from "../core/interfaces.js";
+import { postJson } from "./http.js";
 
 export class OllamaProvider implements EmbeddingProvider {
   readonly name = "ollama";
@@ -18,27 +19,12 @@ export class OllamaProvider implements EmbeddingProvider {
   async embed(texts: string[]): Promise<number[][]> {
     const results: number[][] = [];
     for (const text of texts) {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), this.timeoutMs);
-      let response: Response;
-      try {
-        response = await fetch(`${this.baseUrl}/embeddings`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
-          },
-          body: JSON.stringify({ model: this.model, prompt: text }),
-          signal: controller.signal,
-        });
-      } catch (err: any) {
-        if (err && (err.name === "AbortError" || err.code === "ABORT_ERR")) {
-          throw new Error(`Ollama embedding timed out after ${this.timeoutMs}ms`);
-        }
-        throw err;
-      } finally {
-        clearTimeout(id);
-      }
+      const response = await postJson(
+        `${this.baseUrl}/embeddings`,
+        { model: this.model, prompt: text },
+        this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {},
+        this.timeoutMs
+      );
 
       if (!response.ok) {
         const body = await response.text();

@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { OpenAIProvider } from "../../embedder/openai.js";
 
 describe("OpenAIProvider", () => {
@@ -109,6 +110,43 @@ describe("OpenAIProvider", () => {
         /timed out after 1ms/
       );
     } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("uses a direct localhost request instead of fetch", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new Error("fetch should not be called for localhost");
+    }) as typeof fetch;
+
+    const server = createServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += String(chunk);
+      });
+      req.on("end", () => {
+        assert.equal(req.method, "POST");
+        assert.ok(req.url?.includes("/embeddings"));
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: [{ embedding: [4, 5, 6] }] }));
+      });
+    });
+
+    try {
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const address = server.address();
+      if (typeof address !== "object" || address === null) {
+        throw new Error("failed to start test server");
+      }
+
+      const p = new OpenAIProvider(`http://localhost:${address.port}/v1`, "text-embedding-3-small", "sk-key");
+      const embeddings = await p.embed(["hello"]);
+
+      assert.deepEqual(embeddings, [[4, 5, 6]]);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
       globalThis.fetch = originalFetch;
     }
   });

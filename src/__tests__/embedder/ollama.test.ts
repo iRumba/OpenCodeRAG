@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { OllamaProvider } from "../../embedder/ollama.js";
 
 describe("OllamaProvider", () => {
@@ -89,6 +90,45 @@ describe("OllamaProvider", () => {
         /timed out after 1ms/
       );
     } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("uses a direct localhost request instead of fetch", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new Error("fetch should not be called for localhost");
+    }) as typeof fetch;
+
+    const server = createServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += String(chunk);
+      });
+      req.on("end", () => {
+        assert.equal(req.method, "POST");
+        assert.equal(req.url, "/api/embeddings");
+        assert.equal(req.headers["content-type"], "application/json");
+        assert.match(body, /"prompt":"hello"/);
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ embedding: [1, 2, 3] }));
+      });
+    });
+
+    try {
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const address = server.address();
+      if (typeof address !== "object" || address === null) {
+        throw new Error("failed to start test server");
+      }
+
+      const p = new OllamaProvider(`http://localhost:${address.port}/api`, "embeddinggemma");
+      const embeddings = await p.embed(["hello"]);
+
+      assert.deepEqual(embeddings, [[1, 2, 3]]);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
       globalThis.fetch = originalFetch;
     }
   });
