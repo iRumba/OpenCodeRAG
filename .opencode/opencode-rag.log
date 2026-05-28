@@ -10,3 +10,47 @@
 
 [2026-05-28T14:27:04.517Z] [embedder.ollama] Sending Ollama embedding request to http://127.0.0.1:11434/api/embed (proxy disabled)
 
+[2026-05-28T14:30:08.943Z] [embedder.ollama] Starting embedding request: baseUrl=http://localhost:11434/api, model=embeddinggemma, texts=1, payloadType=single
+
+[2026-05-28T14:30:08.945Z] [embedder.ollama] Sending Ollama embedding request to http://localhost:11434/api/embed (proxy disabled)
+
+[2026-05-28T14:30:08.963Z] [embedder.ollama] Starting embedding request: baseUrl=http://localhost:55901/api, model=embeddinggemma, texts=1, payloadType=single
+
+[2026-05-28T14:30:08.964Z] [embedder.ollama] Sending Ollama embedding request to http://localhost:55901/api/embed (proxy disabled)
+
+[2026-05-28T14:30:08.970Z] [embedder.ollama] Received Ollama response from http://localhost:55901/api/embed with status 200
+
+[2026-05-28T14:30:08.971Z] [embedder.ollama] Ollama response used embedding field from http://localhost:55901/api/embed: vectorLength=3
+
+[2026-05-28T14:30:08.972Z] [embedder.ollama] Ollama primary endpoint /embed succeeded
+
+[2026-05-28T14:30:08.975Z] [embedder.ollama] Starting embedding request: baseUrl=http://localhost:55903/api, model=embeddinggemma, texts=1, payloadType=single
+
+[2026-05-28T14:30:08.976Z] [embedder.ollama] Sending Ollama embedding request to http://localhost:55903/api/embed (proxy disabled)
+
+[2026-05-28T14:30:08.981Z] [embedder.ollama] Received Ollama response from http://localhost:55903/api/embed with status 200
+
+[2026-05-28T14:30:08.981Z] [embedder.ollama] Ollama response used embeddings field from http://localhost:55903/api/embed: batchSize=1
+
+[2026-05-28T14:30:08.982Z] [embedder.ollama] Ollama primary endpoint /embed succeeded
+
+[2026-05-28T14:30:08.984Z] [embedder.ollama] Starting embedding request: baseUrl=http://localhost:55906/api, model=embeddinggemma, texts=1, payloadType=single
+
+[2026-05-28T14:30:08.984Z] [embedder.ollama] Sending Ollama embedding request to http://localhost:55906/api/embed (proxy disabled)
+
+[2026-05-28T14:30:08.986Z] [embedder.ollama] Received Ollama response from http://localhost:55906/api/embed with status 200
+
+[2026-05-28T14:30:08.987Z] [embedder.ollama] Ollama response used embeddings field from http://localhost:55906/api/embed: batchSize=1
+
+[2026-05-28T14:30:08.988Z] [embedder.ollama] Ollama primary endpoint /embed succeeded
+
+[2026-05-28T14:30:44.184Z] [embedder.ollama] Starting embedding request: baseUrl=http://127.0.0.1:11434/api, model=embeddinggemma, texts=1, payloadType=single
+
+[2026-05-28T14:30:44.185Z] [embedder.ollama] Sending Ollama embedding request to http://127.0.0.1:11434/api/embed (proxy disabled)
+
+[2026-05-28T14:30:45.438Z] [embedder.ollama] Received Ollama response from http://127.0.0.1:11434/api/embed with status 200
+
+[2026-05-28T14:30:45.439Z] [embedder.ollama] Ollama response used embeddings field from http://127.0.0.1:11434/api/embed: batchSize=1
+
+[2026-05-28T14:30:45.439Z] [embedder.ollama] Ollama primary endpoint /embed succeeded
+
