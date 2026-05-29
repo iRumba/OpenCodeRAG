@@ -18,8 +18,7 @@ embeddings and vector similarity.
 - **Local vector store** — LanceDB with L2 distance scoring, memory mode for
   testing.
 - **CLI** — index, query, clear, status commands.
-- **OpenCode plugin** — exposes a chunk retrieval tool and injects relevant code context into prompts and file/code
-  search tool results.
+- **OpenCode plugin** — registers a RAG-backed `read` tool override, exposes a chunk retrieval tool, and injects relevant code context into search tool results.
 
 ## Architecture
 
@@ -110,7 +109,11 @@ Create `opencode-rag.json` in the project root (auto-detected) or pass via
   },
   "openCode": {
     "enabled": true,
-    "maxContextChunks": 5
+    "maxContextChunks": 5,
+    "overrideRead": true,
+    "allowRangeReadFallback": false,
+    "maxReadOutputChars": 20000,
+    "readNoResultsBehavior": "hint"
   },
   "chunkers": []
 }
@@ -198,19 +201,40 @@ manifest file itself. Press `Ctrl+C` to stop.
 
 ### OpenCode Plugin
 
-The plugin hooks into:
-1. `opencode-rag-context` to let the agent ask for chunk-level evidence before planning or editing
-2. `chat.message` to retrieve context from the user's prompt before the LLM runs
-3. `tool.execute.after` for `glob`, `grep`, `read`, and `list` so retrieved
-  context is also appended when OpenCode searches for files or code
+The plugin registers:
 
-In both cases it:
-1. Builds a retrieval query from the prompt, tool output, or explicit tool arguments
+1. **`opencode-rag-context`** — a custom retrieval tool for chunk-level evidence
+2. **`read` override** — replaces the built-in read tool with a RAG-powered version that returns indexed chunks instead of full file contents (configurable via `openCode.overrideRead`)
+3. **`tool.execute.after`** — hooks into `glob`, `grep`, and `list` to append relevant RAG context alongside search results
+
+In all cases it:
+1. Builds a retrieval query from the tool arguments or tool output
 2. Runs semantic retrieval against the indexed workspace
 3. Formats top results as code blocks with file path and line numbers
-4. Injects the formatted context back into the active OpenCode flow
+4. Injects the formatted context into the tool result output
 
 The `opencode-rag-context` tool is the preferred entry point for agents when they need file provenance, surrounding implementation details, or a narrow code slice before taking action.
+
+#### Read Override Tool
+
+When `openCode.overrideRead` is `true` (default), the plugin registers a custom `read` tool that returns only the most relevant indexed code chunks for the requested file, rather than the full file content. This saves tokens while preserving the code context the agent needs.
+
+The tool accepts the same arguments as the built-in `read`:
+- `filePath` / `path` / `absolutePath` — file to read
+- `offset` / `limit` / `startLine` / `endLine` — line range hints for chunk filtering
+- `query` / `reason` — free-text retrieval query to guide chunk selection
+
+If no query is provided, the tool builds one from the file path and requested line range.
+
+**Config options:**
+
+| Option | Default | Description |
+| ------ | ------- | ----------- |
+| `openCode.overrideRead` | `true` | Set to `false` to keep the built-in read tool |
+| `openCode.maxReadOutputChars` | `20000` | Maximum characters in the read tool output |
+| `openCode.readNoResultsBehavior` | `"hint"` | Behavior when no indexed chunks match the requested file: `"hint"` explains no chunks were found, `"empty"` returns empty output, `"error"` returns a clear error |
+
+When `readNoResultsBehavior` is `"error"`, the tool suggests verifying the file was indexed and checking the file path.
 
 Errors during retrieval are silently caught — a failed search won't break the
 chat.
@@ -371,7 +395,7 @@ imports. No test library dependencies.
 
 - Embedding model must support 384-dimensional vectors (default seed row size)
 - 19 built-in chunkers (AST for 16, regex for 3) + configurable fallback
-- Watch mode is CLI-only; the OpenCode plugin augments prompts, exposes a retrieval tool, and updates file/code search results but does not index automatically
+- The read override tool requires the file to be indexed — non-indexed files return a no-results message (configurable via `readNoResultsBehavior`)
 
 ## Privacy
 
