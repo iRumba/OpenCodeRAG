@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { PluginInput } from "@opencode-ai/plugin";
@@ -50,68 +50,69 @@ function makeResult(
     chunk: {
       id,
       content,
-      metadata: {
-        filePath,
-        startLine,
-        endLine,
-        language,
-      },
+      metadata: { filePath, startLine, endLine, language },
     },
   };
 }
 
-function makeToolContext() {
+const testWorktree = process.cwd();
+
+const dummyProvider: EmbeddingProvider = {
+  name: "test",
+  embed: async () => [],
+};
+
+const dummyStore: VectorStore = {
+  addChunks: async () => {},
+  search: async () => [],
+  count: async () => 0,
+  clear: async () => {},
+  deleteByFilePath: async () => {},
+};
+
+const populatedStore: VectorStore = {
+  addChunks: async () => {},
+  search: async () => [],
+  count: async () => 5,
+  clear: async () => {},
+  deleteByFilePath: async () => {},
+};
+
+type SeenRetrieveCall = {
+  query: string;
+  topK: number;
+};
+
+function makeDependencies(
+  results: SearchResult[],
+  count: number
+): {
+  dependencies: { retrieve: typeof retrieve };
+  getSeen: () => SeenRetrieveCall;
+} {
+  let seen: SeenRetrieveCall = { query: "", topK: 0 };
+
+  const retrieve = async (
+    query: string,
+    _embedder: EmbeddingProvider,
+    _store: VectorStore,
+    options?: { topK?: number }
+  ): Promise<SearchResult[]> => {
+    seen = { query, topK: options?.topK ?? 0 };
+    return results;
+  };
+
   return {
-    sessionID: "session-1",
-    messageID: "message-1",
-    agent: "assistant",
-    directory: "/workspace",
-    worktree: "/workspace",
-    abort: new AbortController().signal,
-    metadata() {},
-    ask: async () => {},
+    dependencies: { retrieve },
+    getSeen: () => seen,
   };
 }
 
-function makeDependencies(results: SearchResult[], count = 1) {
-  const store: VectorStore = {
-    async addChunks(): Promise<void> {},
-    async search(): Promise<SearchResult[]> {
-      return results;
-    },
-    async count(): Promise<number> {
-      return count;
-    },
-    async clear(): Promise<void> {},
-    async deleteByFilePath(): Promise<void> {},
-  };
-
-  const embedder: EmbeddingProvider = {
-    name: "mock",
-    async embed(_texts: string[]): Promise<number[][]> {
-      return [[0.1, 0.2, 0.3]];
-    },
-  };
-
-  let seenQuery = "";
-  let seenTopK = 0;
-
+function makeToolContext(): Record<string, unknown> {
   return {
-    dependencies: {
-      createEmbedder: () => embedder,
-      createStore: () => store,
-      retrieve: async (
-        query: string,
-        _embedder: EmbeddingProvider,
-        _store: VectorStore,
-        options?: { topK?: number }
-      ): Promise<SearchResult[]> => {
-        seenQuery = query;
-        seenTopK = options?.topK ?? 0;
-        return results;
-      },
-    },
-    getSeen: () => ({ query: seenQuery, topK: seenTopK }),
+    sessionID: "session-test",
+    callID: "call-test",
+    agent: "test",
   };
 }
 
@@ -172,11 +173,16 @@ describe("ragPlugin", () => {
       }),
       storePath: "memory://",
       logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      store: populatedStore,
       dependencies,
+      worktree: testWorktree,
     });
 
     const retrievalTool = hooks.tool?.["opencode-rag-context"] as ToolDefinition;
     assert.ok(retrievalTool, "expected chunk retrieval tool to be registered");
+
+    const readTool = hooks.tool?.read;
+    assert.ok(readTool, "expected RAG-backed read tool to be registered");
 
     const result = await retrievalTool.execute(
       {
@@ -211,6 +217,57 @@ describe("ragPlugin", () => {
     assert.equal(seen.topK, 4);
   });
 
+  it("writes multiline chunk contents to the log file", async () => {
+    const tempDir = mkdtempSync(path.join(tmpdir(), "opencode-rag-log-"));
+
+    try {
+      const results = [
+        makeResult(
+          "chunk-1",
+          "src/plugin.ts",
+          12,
+          20,
+          "typescript",
+          "export function chunkEntryPoint() {\n  return true;\n}\n",
+          0.93
+        ),
+      ];
+
+      const { dependencies } = makeDependencies(results, 1);
+      const logFilePath = path.join(tempDir, ".opencode", "opencode-rag.log");
+      const hooks = createRagHooks({
+        cfg: makeConfig({
+          retrieval: { topK: 7 },
+          openCode: { enabled: true, maxContextChunks: 5 },
+        }),
+        storePath: "memory://",
+        logFilePath,
+        store: populatedStore,
+        dependencies,
+        worktree: testWorktree,
+      });
+
+      const retrievalTool = hooks.tool?.["opencode-rag-context"] as ToolDefinition;
+      assert.ok(retrievalTool, "expected chunk retrieval tool to be registered");
+
+      await retrievalTool.execute(
+        {
+          query: "Locate the chunking entry point",
+          pathHints: ["src/plugin.ts"],
+          languageHints: ["typescript"],
+          topK: 4,
+        },
+        makeToolContext() as never
+      );
+
+      const logContent = readFileSync(logFilePath, "utf8");
+      assert.ok(logContent.includes("export function chunkEntryPoint() {\n  return true;\n}"));
+      assert.ok(!logContent.includes("export function chunkEntryPoint() {\\n  return true;\\n}"));
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("returns a helpful message when the index is empty", async () => {
     const { dependencies } = makeDependencies([], 0);
     const hooks = createRagHooks({
@@ -223,6 +280,7 @@ describe("ragPlugin", () => {
           assert.fail("retrieve should not run when the index is empty");
         },
       },
+      worktree: testWorktree,
     });
 
     const retrievalTool = hooks.tool?.["opencode-rag-context"] as ToolDefinition;
@@ -253,6 +311,7 @@ describe("ragPlugin", () => {
       storePath: "memory://",
       logFilePath: path.join(tmpdir(), "opencode-rag.log"),
       dependencies,
+      worktree: testWorktree,
     });
 
     const systemHook = hooks["experimental.chat.system.transform"];
@@ -266,28 +325,19 @@ describe("ragPlugin", () => {
     assert.match(output.system[0]!, /Use it before planning/);
   });
 
-  it("appends retrieved chunk text to the chat message before tool use", async () => {
-    const { dependencies } = makeDependencies(
-      [
-        makeResult(
-          "chunk-1",
-          "src/embedder/openai.ts",
-          5,
-          12,
-          "typescript",
-          "export class OpenAIProvider implements EmbeddingProvider {}",
-          0.97
-        ),
-      ],
-      1
-    );
+  it("does not retrieve context on chat.message (retrieval only on file tool scans)", async () => {
+    const retrieveShouldNotRun = async () => {
+      assert.fail("retrieve should not run on chat.message");
+    };
+
     const hooks = createRagHooks({
       cfg: makeConfig({
         openCode: { enabled: true, maxContextChunks: 5 },
       }),
       storePath: "memory://",
       logFilePath: path.join(tmpdir(), "opencode-rag.log"),
-      dependencies,
+      dependencies: { retrieve: retrieveShouldNotRun },
+      worktree: testWorktree,
     });
 
     const chatMessageHook = hooks["chat.message"];
@@ -310,12 +360,90 @@ describe("ragPlugin", () => {
 
     await chatMessageHook?.({ sessionID: "session-1" } as never, output as never);
 
-    assert.equal(output.parts.length, 2);
-    assert.match(output.parts[1]!.text ?? "", /opencode-rag retrieved context/);
-    assert.match(output.parts[1]!.text ?? "", /src\/embedder\/openai\.ts:5-12/);
-    assert.match(output.parts[1]!.text ?? "", /OpenAIProvider/);
-    assert.equal(output.parts[1]!.messageID, "msg-1");
-    assert.equal(output.parts[1]!.sessionID, "session-1");
-    assert.match(output.parts[1]!.id ?? "", /^prt_/);
+    assert.equal(output.parts.length, 1);
+  });
+
+  it("registers a RAG-backed read override tool", async () => {
+    const hooks = createRagHooks({
+      cfg: makeConfig({
+        openCode: { enabled: true, maxContextChunks: 5 },
+      }),
+      storePath: "memory://",
+      logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      store: populatedStore,
+      worktree: testWorktree,
+    });
+
+    const readTool = hooks.tool?.read;
+    assert.ok(readTool, "expected RAG-backed read tool to be registered");
+    assert.ok(typeof readTool === "object" && readTool !== null);
+    assert.ok("execute" in readTool);
+
+    const result = await (readTool as { execute: Function }).execute(
+      {
+        filePath: "src/embedder/openai.ts",
+        query: "OpenAI provider implementation",
+      },
+      {} as never
+    );
+
+    assert.notEqual(typeof result, "string");
+    const structured = result as {
+      title?: string;
+      output: string;
+      metadata?: Record<string, unknown>;
+    };
+
+    assert.ok(structured.title);
+    assert.match(structured.title!, /OpenCodeRAG/);
+    assert.match(structured.output, /OpenCodeRAG read override active/);
+  });
+
+  it("does not replace output for non-read search tools", async () => {
+    const results = [
+      makeResult(
+        "chunk-1",
+        "src/embedder/openai.ts",
+        5,
+        12,
+        "typescript",
+        "export class OpenAIProvider implements EmbeddingProvider {}",
+        0.97
+      ),
+    ];
+
+    const { dependencies } = makeDependencies(results, 1);
+    const hooks = createRagHooks({
+      cfg: makeConfig({
+        openCode: { enabled: true, maxContextChunks: 5 },
+      }),
+      storePath: "memory://",
+      logFilePath: path.join(tmpdir(), "opencode-rag.log"),
+      store: populatedStore,
+      dependencies,
+      worktree: testWorktree,
+    });
+
+    const toolAfterHook = hooks["tool.execute.after"];
+    assert.ok(toolAfterHook);
+
+    const grepOutput = "src/embedder/openai.ts:1:export class OpenAIProvider";
+    const output = {
+      title: "Grep result",
+      output: grepOutput,
+      metadata: null,
+    };
+
+    await toolAfterHook?.(
+      {
+        tool: "grep",
+        sessionID: "session-1",
+        callID: "call-2",
+      } as never,
+      output as never
+    );
+
+    assert.match(output.output, /opencode-rag retrieved context/);
+    assert.match(output.output, /src\/embedder\/openai.ts:1:export class OpenAIProvider/);
   });
 });

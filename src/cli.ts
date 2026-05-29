@@ -24,12 +24,12 @@ interface CliOptions {
 
 function logCliError(logFilePath: string, scope: string, message: string, error: unknown): void {
   console.error(message);
-  appendDebugLog(logFilePath, { scope, message, error });
+  //appendDebugLog(logFilePath, { scope, message, error });
 }
 
 function logCliInfo(logFilePath: string, scope: string, message: string): void {
   console.log(message);
-  appendDebugLog(logFilePath, { scope, message });
+  //appendDebugLog(logFilePath, { scope, message });
 }
 
 async function resolveConfig(opt: CliOptions, logFilePath: string): Promise<RagConfig> {

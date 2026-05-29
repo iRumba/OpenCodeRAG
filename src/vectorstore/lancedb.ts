@@ -1,5 +1,5 @@
 import * as lancedb from "@lancedb/lancedb";
-import type { Connection, Table } from "@lancedb/lancedb";
+import type { Connection, Table, Version } from "@lancedb/lancedb";
 import type { VectorStore, Chunk, SearchResult } from "../core/interfaces.js";
 import { normalizeFilePath } from "../core/manifest.js";
 
@@ -43,7 +43,6 @@ export class LanceDBStore implements VectorStore {
     if (tableNames.includes(TABLE_NAME)) {
       this.table = await db.openTable(TABLE_NAME);
     } else {
-      // Create table with initial data to infer schema
       const seedRow: ChunkRow = {
         id: "__seed__",
         content: "",
@@ -60,7 +59,6 @@ export class LanceDBStore implements VectorStore {
         mode: "overwrite",
       });
 
-      // Remove seed row
       await this.table.delete('id = "__seed__"');
     }
 
@@ -88,18 +86,27 @@ export class LanceDBStore implements VectorStore {
     await table.add(rows as unknown as Record<string, unknown>[]);
   }
 
-  async search(
-    embedding: number[],
-    topK: number
-  ): Promise<SearchResult[]> {
+  async search(embedding: number[], topK: number): Promise<SearchResult[]> {
+    try {
+      return await this.searchInternal(embedding, topK);
+    } catch (err) {
+      if (this.isCorruptionError(err)) {
+        const repaired = await this.tryRepair();
+        if (repaired) {
+          return this.searchInternal(embedding, topK);
+        }
+      }
+      return [];
+    }
+  }
+
+  private async searchInternal(embedding: number[], topK: number): Promise<SearchResult[]> {
     const db = await this.getDb();
     const tableNames = await db.tableNames();
     if (!tableNames.includes(TABLE_NAME)) return [];
 
     const table = await this.getTable();
     const count = await table.countRows();
-
-    // If table is empty, return nothing
     if (count === 0) return [];
 
     const results = await table.search(embedding).limit(topK).toArray();
@@ -107,7 +114,6 @@ export class LanceDBStore implements VectorStore {
     return results.map((row: Record<string, unknown>) => {
       const distance = (row._distance as number) ?? 0;
       const score = 1 / (1 + distance);
-
       return {
         score,
         chunk: {
@@ -145,7 +151,6 @@ export class LanceDBStore implements VectorStore {
         await db.dropTable(TABLE_NAME);
       }
     } catch {
-      // Table may not exist
     }
     this.table = null;
   }
@@ -158,5 +163,65 @@ export class LanceDBStore implements VectorStore {
     const table = await this.getTable();
     const normalizedPath = normalizeFilePath(filePath).replace(/'/g, "''");
     await table.delete(`filePath = '${normalizedPath}'`);
+  }
+
+  private isCorruptionError(err: unknown): boolean {
+    if (err instanceof Error) {
+      return (
+        err.message.includes("Not found") &&
+        err.message.includes(".lance") &&
+        err.message.includes("lance error")
+      );
+    }
+    return false;
+  }
+
+  private async tryRepair(): Promise<boolean> {
+    try {
+      this.table = null;
+      this.db = null;
+
+      const db = await this.getDb();
+      const tableNames = await db.tableNames();
+      if (!tableNames.includes(TABLE_NAME)) return false;
+
+      const table = await db.openTable(TABLE_NAME);
+
+      let versions: Version[];
+      try {
+        versions = await table.listVersions();
+      } catch {
+        await db.dropTable(TABLE_NAME).catch(() => {});
+        this.table = null;
+        return true;
+      }
+
+      if (versions.length <= 1) {
+        await db.dropTable(TABLE_NAME).catch(() => {});
+        this.table = null;
+        return true;
+      }
+
+      const sorted = [...versions].sort((a, b) => b.version - a.version);
+
+      for (const ver of sorted.slice(1)) {
+        try {
+          await table.checkout(ver.version);
+          const count = await table.countRows();
+          await table.restore();
+          await table.checkoutLatest();
+          this.table = table;
+          return true;
+        } catch {
+          continue;
+        }
+      }
+
+      await db.dropTable(TABLE_NAME).catch(() => {});
+      this.table = null;
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

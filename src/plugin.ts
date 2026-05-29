@@ -1,4 +1,4 @@
-import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin";
+import type { Plugin, PluginInput, Hooks, ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin/tool";
 import type { EmbeddingProvider, VectorStore, SearchResult } from "./core/interfaces.js";
 import { loadConfig, DEFAULT_CONFIG, type RagConfig } from "./core/config.js";
@@ -8,14 +8,14 @@ import { retrieve } from "./retriever/retriever.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { appendDebugLog } from "./core/fileLogger.js";
 import { createBackgroundIndexer } from "./watcher.js";
+import { createRagReadTool } from "./opencode/create-read-tool.js";
 import { existsSync } from "node:fs";
-import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 const configCache = new Map<string, RagConfig>();
 const backgroundIndexers = new Map<string, { close: () => Promise<void> }>();
 
-const SEARCH_TOOLS = new Set(["glob", "grep", "read", "list"]);
+const SEARCH_TOOLS = new Set(["glob", "grep", "list"]);
 const CONTEXT_TOOL_NAME = "opencode-rag-context";
 const CONTEXT_MARKER = "opencode-rag retrieved context";
 
@@ -24,30 +24,6 @@ type RetrievalQueryHints = {
   pathHints?: string[];
   languageHints?: string[];
   topK?: number;
-};
-
-type TextPart = {
-  type: "text";
-  text: string;
-  id: string;
-  sessionID: string;
-  messageID: string;
-};
-
-type MessagePart = {
-  type?: string;
-  text?: string;
-  id?: string;
-  sessionID?: string;
-  messageID?: string;
-};
-
-type MessagePartsOutput = {
-  message: {
-    id?: string;
-    sessionID?: string;
-  };
-  parts: MessagePart[];
 };
 
 type ToolExecuteAfterOutput = {
@@ -65,17 +41,88 @@ function appendVerboseLog(
   appendDebugLog(logFilePath, {
     scope,
     message: payload
-      ? `${message} ${safeStringify(payload)}`
+      ? `${message}\n${formatLogPayload(payload)}`
       : message,
   });
 }
 
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
+function formatLogPayload(value: unknown, indent = 0): string {
+  const prefix = "  ".repeat(indent);
+
+  if (value === null) {
+    return `${prefix}null`;
   }
+
+  if (typeof value === "string") {
+    return indentMultiline(value, indent);
+  }
+
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return `${prefix}${String(value)}`;
+  }
+
+  if (typeof value === "undefined") {
+    return `${prefix}undefined`;
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return `${prefix}[]`;
+    }
+
+    return value
+      .map((item) => {
+        if (item === null || typeof item === "number" || typeof item === "boolean" || typeof item === "bigint") {
+          return `${prefix}- ${String(item)}`;
+        }
+
+        if (typeof item === "undefined") {
+          return `${prefix}- undefined`;
+        }
+
+        if (typeof item === "string") {
+          return `${prefix}- ${item.includes("\n") ? `\n${indentMultiline(item, indent + 1)}` : item}`;
+        }
+
+        return `${prefix}-\n${formatLogPayload(item, indent + 1)}`;
+      })
+      .join("\n");
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) {
+      return `${prefix}{}`;
+    }
+
+    return entries
+      .map(([key, nested]) => {
+        if (nested === null || typeof nested === "number" || typeof nested === "boolean" || typeof nested === "bigint") {
+          return `${prefix}${key}: ${String(nested)}`;
+        }
+
+        if (typeof nested === "undefined") {
+          return `${prefix}${key}: undefined`;
+        }
+
+        if (typeof nested === "string") {
+          return `${prefix}${key}:\n${indentMultiline(nested, indent + 1)}`;
+        }
+
+        return `${prefix}${key}:\n${formatLogPayload(nested, indent + 1)}`;
+      })
+      .join("\n");
+  }
+
+  return `${prefix}${String(value)}`;
+}
+
+function indentMultiline(text: string, indent: number): string {
+  const prefix = "  ".repeat(indent);
+  return text
+    .split("\n")
+    .map((line) => `${prefix}${line}`)
+    .join("\n");
 }
 
 async function getConfig(directory: string): Promise<RagConfig> {
@@ -145,45 +192,6 @@ function buildRetrievalQuery(hints: RetrievalQueryHints): string {
   }
 
   return parts.join("\n").trim();
-}
-
-function getQueryFromParts(output: MessagePartsOutput): string {
-  const queryTexts: string[] = [];
-
-  for (const part of output.parts) {
-    if (part.type === "text" && typeof part.text === "string") {
-      queryTexts.push(part.text);
-    }
-  }
-
-  return queryTexts.join("\n").trim();
-}
-
-function hasInjectedContext(parts: Array<{ type?: string; text?: string }>): boolean {
-  return parts.some(
-    (part) => part.type === "text" && typeof part.text === "string" && part.text.includes("opencode-rag retrieved context")
-  );
-}
-
-function buildInjectedTextPart(output: MessagePartsOutput, text: string): TextPart | null {
-  const template = output.parts.find(
-    (part) => typeof part.sessionID === "string" && typeof part.messageID === "string"
-  );
-
-  const sessionID = output.message.sessionID ?? template?.sessionID;
-  const messageID = output.message.id ?? template?.messageID;
-
-  if (!sessionID || !messageID) {
-    return null;
-  }
-
-  return {
-    type: "text",
-    text,
-    id: `prt_${randomUUID().replace(/-/g, "")}`,
-    sessionID,
-    messageID,
-  };
 }
 
 function normalizeToolOutput(output: string): string {
@@ -260,57 +268,6 @@ async function loadRetrievedResults(
     .slice(0, cfg.openCode.maxContextChunks);
 }
 
-async function appendRetrievedContext(
-  logFilePath: string,
-  query: string,
-  output: MessagePartsOutput,
-  store: VectorStore,
-  embedder: EmbeddingProvider,
-  cfg: RagConfig,
-  retrieveFn: typeof retrieve = retrieve,
-  extraQuery?: string
-): Promise<void> {
-  if (hasInjectedContext(output.parts)) return;
-
-  const merged = await loadRetrievedResults(query, embedder, store, cfg, retrieveFn, cfg.retrieval.topK, extraQuery);
-
-  if (merged.length === 0) {
-    appendVerboseLog(logFilePath, "chat.message", "retrieval produced no context", {
-      query,
-      extraQuery: extraQuery ?? null,
-    });
-    return;
-  }
-
-  const context = formatContext(merged);
-  const part = buildInjectedTextPart(output, context);
-
-  if (!part) {
-    appendVerboseLog(logFilePath, "chat.message", "skipped context append because message metadata was missing", {
-      query,
-      extraQuery: extraQuery ?? null,
-      message: output.message,
-      parts: output.parts,
-    });
-    return;
-  }
-
-  output.parts.push(part);
-
-  appendVerboseLog(logFilePath, "chat.message", "appended retrieved context", {
-    query,
-    extraQuery: extraQuery ?? null,
-    results: merged.map((result) => ({
-      filePath: result.chunk.metadata.filePath,
-      startLine: result.chunk.metadata.startLine,
-      endLine: result.chunk.metadata.endLine,
-      language: result.chunk.metadata.language,
-      score: result.score,
-    })),
-    context,
-  });
-}
-
 type RagPluginDependencies = {
   createEmbedder: typeof createEmbedder;
   createStore: (storePath: string) => VectorStore;
@@ -327,6 +284,7 @@ type CreateRagHooksOptions = {
   cfg: RagConfig;
   storePath: string;
   logFilePath: string;
+  worktree: string;
   dependencies?: Partial<RagPluginDependencies>;
   store?: VectorStore;
   embedder?: EmbeddingProvider;
@@ -344,6 +302,8 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     scope: "plugin",
     message: "OpenCode plugin initialized",
   });
+
+  const overrideRead = options.cfg.openCode.overrideRead !== false;
 
   const retrievalTool = tool({
     description:
@@ -454,61 +414,47 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     },
   });
 
+  const tools: Record<string, ToolDefinition> = {
+    [CONTEXT_TOOL_NAME]: retrievalTool,
+  };
+
+  if (overrideRead) {
+    tools.read = createRagReadTool({
+      worktree: options.worktree,
+      config: options.cfg,
+      embedder,
+      store,
+      logFilePath: options.logFilePath,
+    });
+  }
+
   return {
     async event({ event }) {
       //appendVerboseLog(options.logFilePath, "event", "opencode event received", event);
     },
-    tool: {
-      [CONTEXT_TOOL_NAME]: retrievalTool,
-    },
+    tool: tools,
     async "experimental.chat.system.transform"(_input, output) {
       appendDebugLog(options.logFilePath, {
         scope: "experimental.chat.system.transform",
         message: "system guidance injected",
       });
 
-      output.system.unshift(
-        [
-          "OpenCodeRAG is available through the `opencode-rag-context` tool.",
-          "Use it before planning, editing, or answering when you need code provenance, surrounding implementation, or file-level evidence.",
-          "Prefer narrow queries and add path or language hints when they are known.",
-        ].join(" ")
-      );
-    },
-    async "chat.message"(_input, output) {
-      try {
-        appendVerboseLog(options.logFilePath, "chat.message", "chat.message hook invoked", {
-          input: _input,
-          output,
-        });
+      const guidance: string[] = [
+        "OpenCodeRAG is available through the `opencode-rag-context` tool.",
+        "Use it before planning, editing, or answering when you need code provenance, surrounding implementation, or file-level evidence.",
+        "Prefer narrow queries and add path or language hints when they are known.",
+      ];
 
-        const count = await store.count();
-
-        if (count === 0) {
-          appendVerboseLog(options.logFilePath, "chat.message", "skipped retrieval because no chunks are indexed", {
-            parts: output.parts,
-          });
-
-          return;
-        }
-
-        const query = getQueryFromParts(output);
-        if (query.length === 0) {
-          appendVerboseLog(options.logFilePath, "chat.message", "skipped retrieval because the query was empty", {
-            parts: output.parts,
-          });
-
-          return;
-        }
-
-        await appendRetrievedContext(options.logFilePath, query, output, store, embedder, options.cfg, dependencies.retrieve);
-      } catch (err) {
-        appendDebugLog(options.logFilePath, {
-          scope: "chat.message",
-          message: "chat.message hook error",
-          error: err,
-        });
+      if (overrideRead) {
+        guidance.push(
+          "The `read` tool is also backed by OpenCodeRAG and returns only relevant indexed chunks instead of full file contents."
+        );
       }
+
+      output.system.unshift(guidance.join(" "));
+    },
+    async "chat.message"(_input) {
+      appendVerboseLog(options.logFilePath, "chat.message", "chat.message hook skipped (retrieval only on file tool scans)");
     },
     async "tool.execute.after"(hookInput, output) {
       try {
@@ -562,7 +508,11 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           return;
         }
 
-        output.output = `${toolOutput}\n${context}`.trim();
+        if (hookInput.tool === "read") {
+          output.output = context;
+        } else {
+          output.output = `${toolOutput}\n${context}`.trim();
+        }
 
         appendVerboseLog(options.logFilePath, "tool.execute.after", "appended retrieval context to tool output", {
           tool: hookInput.tool,
@@ -640,6 +590,7 @@ export const ragPlugin: Plugin = async (
     cfg,
     storePath,
     logFilePath,
+    worktree: input.directory,
     embedder,
     store,
   });

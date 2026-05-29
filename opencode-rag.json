@@ -6,7 +6,7 @@
     "timeoutMs": 30000
   },
   "indexing": {
-    "minFileSizeBytes": 1024,
+    "minFileSizeBytes": 0,
     "includeExtensions": [
       ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
       ".py", ".java", ".go",
