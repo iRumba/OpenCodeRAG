@@ -261,7 +261,7 @@ describe("ragPlugin", () => {
       );
 
       const logContent = readFileSync(logFilePath, "utf8");
-      assert.ok(logContent.includes("export function chunkEntryPoint() {\n  return true;\n}"));
+      assert.ok(logContent.includes("  export function chunkEntryPoint() {\n    return true;\n  }"));
       assert.ok(!logContent.includes("export function chunkEntryPoint() {\\n  return true;\\n}"));
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
