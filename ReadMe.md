@@ -115,6 +115,10 @@ Create `opencode-rag.json` in the project root (auto-detected) or pass via
     "maxReadOutputChars": 20000,
     "readNoResultsBehavior": "hint"
   },
+  "logging": {
+    "level": "info",
+    "logFilePath": "./.opencode/opencode-rag.log"
+  },
   "chunkers": []
 }
 ```
@@ -136,6 +140,26 @@ per request to `/api/embed`. Set `embedding.proxy.url` to use the standard
 proxy-aware HTTP path instead of the direct socket path.
 
 ## Usage
+
+### Logging
+
+Logging is configured under the `logging` key:
+
+```json
+{
+  "logging": {
+    "level": "info",
+    "logFilePath": "./.opencode/opencode-rag.log"
+  }
+}
+```
+
+| Option       | Default                        | Description                                  |
+| ------------ | ------------------------------ | -------------------------------------------- |
+| `level`      | `"info"`                       | Log level: `"debug"`, `"info"`, or `"error"` |
+| `logFilePath` | `"./.opencode/opencode-rag.log"` | Path to the log file (relative paths are resolved against the workspace directory) |
+
+The resolved log file path also falls back to the `LOG_FILE_PATH` environment variable when the config value is not set. Config takes precedence over the env var when both are provided.
 
 ### CLI
 

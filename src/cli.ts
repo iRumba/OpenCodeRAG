@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import path from "node:path";
 import chokidar from "chokidar";
-import { loadConfig, DEFAULT_CONFIG, type RagConfig } from "./core/config.js";
+import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
 import { appendDebugLog } from "./core/fileLogger.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { createEmbedder } from "./embedder/factory.js";
@@ -109,8 +109,9 @@ program
 
     try {
       const cwd = process.cwd();
-      const logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
+      let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
       const config = await resolveConfig(options, logFilePath);
+      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
 
       logCliInfo(logFilePath, "index", "\nIndexing workspace...");
 
@@ -221,8 +222,9 @@ program
 
     try {
       const cwd = process.cwd();
-      const logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
+      let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
       const config = await resolveConfig(options, logFilePath);
+      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
 
       logCliInfo(logFilePath, "query", `\nQuerying: "${query}"`);
       logCliInfo(logFilePath, "query", `Top-K: ${parseInt(options.topK ?? "10", 10)}`);
@@ -272,8 +274,9 @@ program
   .action(async (options: CliOptions) => {
     try {
       const cwd = process.cwd();
-      const logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
+      let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
       const config = await resolveConfig(options, logFilePath);
+      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
 
       const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
       const prevCount = await store.count();
@@ -302,8 +305,9 @@ program
   .action(async (options: CliOptions) => {
     try {
       const cwd = process.cwd();
-      const logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
+      let logFilePath = path.resolve(cwd, ".opencode", "opencode-rag.log");
       const config = await resolveConfig(options, logFilePath);
+      logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
 
       const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
       const count = await store.count();

@@ -35,5 +35,9 @@
       "debounceMs": 2000,
       "intervalMs": 300000
     }
+  },
+  "logging": {
+    "level": "info",
+    "logFilePath": "./.opencode/opencode-rag.log"
   }
 }

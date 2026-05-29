@@ -1,7 +1,7 @@
 import type { Plugin, PluginInput, Hooks, ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin/tool";
 import type { EmbeddingProvider, VectorStore, SearchResult } from "./core/interfaces.js";
-import { loadConfig, DEFAULT_CONFIG, type RagConfig } from "./core/config.js";
+import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
 import { createEmbedder } from "./embedder/factory.js";
 import { LanceDBStore } from "./vectorstore/lancedb.js";
 import { retrieve } from "./retriever/retriever.js";
@@ -535,8 +535,8 @@ export const ragPlugin: Plugin = async (
   input: PluginInput,
   _options?: Record<string, unknown>
 ): Promise<Hooks> => {
-  const logFilePath = path.resolve(input.directory, ".opencode", "opencode-rag.log");
   const cfg = await getConfig(input.directory);
+  const logFilePath = path.resolve(input.directory, resolveLogConfig(cfg).logFilePath);
 
   if (!cfg.openCode.enabled) {
     return {};

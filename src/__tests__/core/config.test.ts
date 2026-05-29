@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig, DEFAULT_CONFIG } from "../../core/config.js";
+import { loadConfig, DEFAULT_CONFIG, resolveLogConfig } from "../../core/config.js";
 
 describe("loadConfig", () => {
   let tmpFile: string;
@@ -92,6 +92,17 @@ describe("loadConfig", () => {
     const config = loadConfig(tmpFile);
     assert.equal(config.vectorStore.path, "/custom/path");
   });
+
+  it("allows partial override of logging settings", () => {
+    writeFileSync(
+      tmpFile,
+      JSON.stringify({ logging: { level: "debug" } }),
+      "utf-8"
+    );
+    const config = loadConfig(tmpFile);
+    assert.equal(config.logging.level, "debug");
+    assert.equal(config.logging.logFilePath, DEFAULT_CONFIG.logging.logFilePath);
+  });
 });
 
 describe("DEFAULT_CONFIG", () => {
@@ -116,5 +127,40 @@ describe("DEFAULT_CONFIG", () => {
 
   it("has topK of 10", () => {
     assert.equal(DEFAULT_CONFIG.retrieval.topK, 10);
+  });
+
+  it("has info as default logging level", () => {
+    assert.equal(DEFAULT_CONFIG.logging.level, "info");
+  });
+
+  it("has default logFilePath", () => {
+    assert.equal(DEFAULT_CONFIG.logging.logFilePath, "./.opencode/opencode-rag.log");
+  });
+});
+
+describe("resolveLogConfig", () => {
+  it("returns default values when config has no logging", () => {
+    const { level, logFilePath } = resolveLogConfig({ ...DEFAULT_CONFIG, logging: DEFAULT_CONFIG.logging });
+    assert.equal(level, "info");
+    assert.equal(logFilePath, "./.opencode/opencode-rag.log");
+  });
+
+  it("uses config values when provided", () => {
+    const config = { ...DEFAULT_CONFIG, logging: { level: "error" as const, logFilePath: "/custom/path.log" } };
+    const { level, logFilePath } = resolveLogConfig(config);
+    assert.equal(level, "error");
+    assert.equal(logFilePath, "/custom/path.log");
+  });
+
+  it("config level overrides default", () => {
+    const config = { ...DEFAULT_CONFIG, logging: { level: "debug" as const, logFilePath: DEFAULT_CONFIG.logging.logFilePath } };
+    const result = resolveLogConfig(config);
+    assert.equal(result.level, "debug");
+  });
+
+  it("config logFilePath overrides env var", () => {
+    const config = { ...DEFAULT_CONFIG, logging: { level: "info" as const, logFilePath: "/config/path.log" } };
+    const { logFilePath } = resolveLogConfig(config);
+    assert.equal(logFilePath, "/config/path.log");
   });
 });

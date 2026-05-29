@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { env } from "node:process";
 import type { EmbeddingProvider, Chunker, VectorStore } from "./interfaces.js";
 
 export interface ChunkerConfig {
@@ -53,6 +54,12 @@ export interface RagConfig {
     readNoResultsBehavior?: ReadNoResultsBehavior;
   };
   chunkers?: ChunkerConfig[];
+  logging: LoggingConfig;
+}
+
+export interface LoggingConfig {
+  level: "debug" | "info" | "error";
+  logFilePath: string;
 }
 
 export const DEFAULT_CONFIG: RagConfig = {
@@ -129,7 +136,18 @@ export const DEFAULT_CONFIG: RagConfig = {
       intervalMs: 300000,
     },
   },
+  logging: {
+    level: "info",
+    logFilePath: "./.opencode/opencode-rag.log",
+  },
 };
+
+export function resolveLogConfig(config: RagConfig): LoggingConfig {
+  return {
+    level: config.logging?.level ?? DEFAULT_CONFIG.logging.level,
+    logFilePath: config.logging?.logFilePath ?? env.LOG_FILE_PATH ?? DEFAULT_CONFIG.logging.logFilePath,
+  };
+}
 
 export interface RagContext {
   config: RagConfig;
@@ -173,5 +191,9 @@ export function loadConfig(filePath: string): RagConfig {
       return merged;
     })(),
     chunkers: parsed.chunkers ?? DEFAULT_CONFIG.chunkers,
+    logging: {
+      ...DEFAULT_CONFIG.logging,
+      ...(parsed.logging ?? {}),
+    } as LoggingConfig,
   };
 }
