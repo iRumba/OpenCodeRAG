@@ -9,8 +9,8 @@ embeddings and vector similarity.
 ## Features
 
 - **AST-aware chunking** — splits code into functions, classes, methods using
-  tree-sitter for 16 languages, plus regex-based chunking for 3 markup/config
-  formats (Markdown, Razor, .sln). Falls back to line-based chunking for
+  tree-sitter for 16 languages, plus regex-based chunking for 4 markup/config/doc
+  formats (Markdown, Razor, .sln, LaTeX). Falls back to line-based chunking for
   unrecognized formats.
 - **Incremental indexing** — manifest-backed indexing skips unchanged files,
   removes deleted entries, and updates only changed files.

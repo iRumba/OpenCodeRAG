@@ -44,6 +44,7 @@ src/
     java.ts           — ...
     go.ts             — ...
     markdown.ts       — regex heading-splitter, code-block aware
+    tex.ts            — regex section-splitter (chapter/section/subsection), comment-aware
     pdf.ts            — paragraph-based, groups small paragraphs, splits oversized
     fallback.ts       — line-based 100-line chunks
     factory.ts        — getChunker(filePath) by extension, chunkFile()
