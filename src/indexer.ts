@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { chunkFile } from "./chunker/factory.js";
+import { extractPdfText } from "./chunker/pdf.js";
 import type { RagConfig } from "./core/config.js";
 import {
   computeFileHash,
@@ -110,10 +111,18 @@ async function scanWorkspace(cwd: string, config: RagConfig): Promise<WorkspaceF
     new Set(config.indexing.excludeDirs)
   );
 
+  const isPdf = (fp: string) => fp.toLowerCase().endsWith(".pdf");
+
   const minSize = config.indexing.minFileSizeBytes ?? 0;
   const workspaceFiles: WorkspaceFile[] = [];
   for (const filePath of files) {
-    const content = await fs.readFile(filePath, "utf-8");
+    let content: string;
+    if (isPdf(filePath)) {
+      const buffer = await fs.readFile(filePath);
+      content = await extractPdfText(buffer);
+    } else {
+      content = await fs.readFile(filePath, "utf-8");
+    }
     const byteLength = Buffer.byteLength(content, "utf-8");
     workspaceFiles.push({
       filePath,

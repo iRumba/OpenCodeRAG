@@ -65,8 +65,10 @@
   "dependencies": {
     "@lancedb/lancedb": "^0.29.0",
     "apache-arrow": "18.1.0",
+    "canvas": "^3.2.3",
     "chokidar": "^4.0.3",
     "commander": "^13.1.0",
+    "pdfjs-dist": "^5.7.284",
     "tree-sitter-wasm": "^1.0.2",
     "web-tree-sitter": "^0.26.9"
   },

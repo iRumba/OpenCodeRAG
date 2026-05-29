@@ -44,6 +44,7 @@ src/
     java.ts           — ...
     go.ts             — ...
     markdown.ts       — regex heading-splitter, code-block aware
+    pdf.ts            — paragraph-based, groups small paragraphs, splits oversized
     fallback.ts       — line-based 100-line chunks
     factory.ts        — getChunker(filePath) by extension, chunkFile()
     uuid.ts           — simple UUID v4 generator
@@ -196,8 +197,43 @@ When behind a corporate proxy:
    `node_modules/tree-sitter-wasm/README.md` for supported names)
 5. Add extension to defaults in `DEFAULT_CONFIG.indexing.includeExtensions`
 
+## Adding a Non-Code Chunker (e.g. PDF)
+
+For binary or document formats:
+
+1. Create `src/chunker/<lang>.ts` implementing `Chunker` directly (not `TreeSitterChunker`)
+2. If binary, add text extraction in the chunker using dynamic imports to avoid
+   startup overhead (see `pdf.ts` for the DOMMatrix polyfill + pdfjs-dist pattern)
+3. Register in `factory.ts` and add extension to `DEFAULT_CONFIG.indexing.includeExtensions`
+4. For binary files, update `scanWorkspace` in `indexer.ts` to read as `Buffer`
+   and extract text before passing to `chunkFile()`
+
 ## Adding a New Embedding Provider
 
 1. Create `src/embedder/<name>.ts` implementing `EmbeddingProvider`
 2. Add provider dispatch in `createEmbedder()` in `factory.ts`
 3. Update `RagConfig.embedding.provider` union type in `config.ts`
+
+## OpenCodeRAG Plugin
+
+This workspace has OpenCodeRAG installed for semantic code retrieval.
+
+### `opencode-rag-context` tool
+Before planning, editing, or answering, use this tool to retrieve relevant code
+chunks with file paths, line ranges, and surrounding implementation.
+- `query` (required) — narrow, specific search, e.g. `"authentication middleware setup"`
+- `pathHints` (optional) — up to 10 path filters, e.g. `["src/auth/"]`
+- `languageHints` (optional) — up to 10 language filters, e.g. `["typescript"]`
+- `topK` (optional) — result count (1-25, default 10)
+
+### File suggestions
+After each user message, a `chat.message` hook appends up to 10 relevant file
+suggestions to the message. Look for lines like
+`src/file.ts (typescript, lines 10-42)` at the bottom of user input.
+
+### Indexing
+- The plugin auto-indexes changed files in the background (debounced 5s)
+- If no results come back, the workspace may not be indexed yet —
+  run `opencode-rag index` from the terminal
+- Tiny files (under 1 KB), excluded extensions, and excluded directories
+  (`node_modules`, `.git`, `.opencode`, `dist`, etc.) are silently skipped

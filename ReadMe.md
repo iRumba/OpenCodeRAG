@@ -93,7 +93,7 @@ Deep merging is applied per section.
 
 | Provider | `baseUrl` example                 | Notes                        |
 | -------- | --------------------------------- | ---------------------------- |
-| ollama   | `http://localhost:11434/api`       | Default. No apiKey required. Proxy is disabled when `embedding.proxy.url` is empty. |
+| ollama   | `http://localhost:11434/api`      | Default. No apiKey required. Proxy is disabled when `embedding.proxy.url` is empty. |
 | openai   | `https://api.openai.com/v1`       | Requires apiKey.             |
 
 `embedding.timeoutMs` defaults to 30000 ms. Increase it if your local model has a slow cold start.
@@ -104,25 +104,9 @@ proxy-aware HTTP path instead of the direct socket path.
 
 ## Usage
 
-### Logging
-
-Logging is configured under the `logging` key:
-
-```json
-{
-  "logging": {
-    "level": "info",
-    "logFilePath": "./.opencode/opencode-rag.log"
-  }
-}
-```
-
-| Option       | Default                        | Description                                  |
-| ------------ | ------------------------------ | -------------------------------------------- |
-| `level`      | `"info"`                       | Log level: `"debug"`, `"info"`, or `"error"` |
-| `logFilePath` | `"./.opencode/opencode-rag.log"` | Path to the log file (relative paths are resolved against the workspace directory) |
-
-The resolved log file path also falls back to the `LOG_FILE_PATH` environment variable when the config value is not set. Config takes precedence over the env var when both are provided.
+This extension consists of two main interfaces:
+1. **CLI** — for manual indexing and querying from the terminal
+2. **OpenCode plugin** — for automatic retrieval and file suggestions within the chat interface
 
 ### CLI
 
@@ -243,6 +227,26 @@ If you use the project-local plugin file, OpenCode auto-loads it from
 `.opencode/opencode.json`.
 
 Restart OpenCode after changing plugin files or plugin configuration.
+
+### Logging
+
+Logging is configured under the `logging` key:
+
+```json
+{
+  "logging": {
+    "level": "info",
+    "logFilePath": "./.opencode/opencode-rag.log"
+  }
+}
+```
+
+| Option       | Default                        | Description                                  |
+| ------------ | ------------------------------ | -------------------------------------------- |
+| `level`      | `"info"`                       | Log level: `"debug"`, `"info"`, or `"error"` |
+| `logFilePath` | `"./.opencode/opencode-rag.log"` | Path to the log file (relative paths are resolved against the workspace directory) |
+
+The resolved log file path also falls back to the `LOG_FILE_PATH` environment variable when the config value is not set. Config takes precedence over the env var when both are provided.
 
 #### AGENTS.md hints for using the plugin
 
@@ -409,7 +413,7 @@ imports. No test library dependencies.
 ## Limitations
 
 - Embedding model dimension is auto-probed at startup; falls back to 384 if probing fails.
-- 19 built-in chunkers (AST for 16, regex for 3) + configurable fallback
+- 20 built-in chunkers (AST for 16, regex for 3, PDF text for 1) + configurable fallback
 
 ## Privacy
 
