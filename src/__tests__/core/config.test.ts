@@ -4,6 +4,7 @@ import { writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig, DEFAULT_CONFIG, resolveLogConfig } from "../../core/config.js";
+import { getRegisteredExtensions } from "../../chunker/factory.js";
 
 describe("loadConfig", () => {
   let tmpFile: string;
@@ -113,6 +114,16 @@ describe("DEFAULT_CONFIG", () => {
   it("includes TypeScript extensions", () => {
     assert.ok(DEFAULT_CONFIG.indexing.includeExtensions.includes(".ts"));
     assert.ok(DEFAULT_CONFIG.indexing.includeExtensions.includes(".tsx"));
+  });
+
+  it("includes every registered chunker extension", () => {
+    const configured = new Set(DEFAULT_CONFIG.indexing.includeExtensions);
+    for (const extension of getRegisteredExtensions()) {
+      assert.ok(
+        configured.has(extension),
+        `expected default config to include ${extension}`
+      );
+    }
   });
 
   it("excludes node_modules, .git, and .opencode", () => {

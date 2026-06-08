@@ -89,6 +89,10 @@ export function getChunker(filePath: string): Chunker {
   return extensionMap.get(ext) ?? fallbackChunker;
 }
 
+export function getRegisteredExtensions(): string[] {
+  return [...extensionMap.keys()].sort();
+}
+
 const MAX_CHUNK_LINES = 100;
 const MAX_CHUNK_CHARS = 8000;
 

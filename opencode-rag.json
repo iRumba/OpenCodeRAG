@@ -16,7 +16,8 @@
       ".json",
       ".html", ".htm", ".css",
       ".xml", ".csproj", ".sln",
-      ".rs", ".rb", ".kt", ".kts", ".swift"
+      ".rs", ".rb", ".kt", ".kts", ".swift",
+      ".tex", ".pdf", ".docx", ".doc", ".xls", ".xlsx"
     ],
     "excludeDirs": [".opencode", "node_modules", ".git", "dist", "build", "__pycache__", ".venv"],
     "chunkOverlap": 0

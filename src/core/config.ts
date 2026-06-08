@@ -81,6 +81,7 @@ export const DEFAULT_CONFIG: RagConfig = {
       ".java",
       ".go",
       ".md",
+      ".mdx",
       ".c",
       ".h",
       ".cpp",

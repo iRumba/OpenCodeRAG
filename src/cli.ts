@@ -1,6 +1,8 @@
 import { Command } from "commander";
 import path from "node:path";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import chokidar from "chokidar";
 import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
 import { appendDebugLog } from "./core/fileLogger.js";
@@ -21,6 +23,18 @@ interface CliOptions {
   force?: boolean;
   watch?: boolean;
   topK?: string;
+}
+
+interface InitOptions {
+  force?: boolean;
+  skipInstall?: boolean;
+}
+
+interface PackageMetadata {
+  name: string;
+  version: string;
+  devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
 }
 
 function logCliError(logFilePath: string, scope: string, message: string, error: unknown): void {
@@ -92,12 +106,183 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${secs}s`;
 }
 
+function getPackageRoot(): string {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+}
+
+function getPackageMetadata(): PackageMetadata {
+  const packageJsonPath = path.join(getPackageRoot(), "package.json");
+  return JSON.parse(readFileSync(packageJsonPath, "utf-8")) as PackageMetadata;
+}
+
+function getStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+  );
+}
+
+function readJsonObject(filePath: string): Record<string, unknown> | undefined {
+  if (!existsSync(filePath)) {
+    return undefined;
+  }
+
+  return JSON.parse(readFileSync(filePath, "utf-8")) as Record<string, unknown>;
+}
+
+function writeJsonFile(filePath: string, value: Record<string, unknown>): void {
+  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
+}
+
+function toPosixPath(input: string): string {
+  return input.split(path.sep).join("/");
+}
+
+function resolveWorkspacePackageSpecifier(opencodeDir: string, packageRoot: string, version: string): string {
+  const workspaceRoot = path.parse(opencodeDir).root.toLowerCase();
+  const sourceRoot = path.parse(packageRoot).root.toLowerCase();
+
+  if (workspaceRoot === sourceRoot) {
+    return `file:${toPosixPath(path.relative(opencodeDir, packageRoot))}`;
+  }
+
+  return version;
+}
+
+function buildWorkspacePackageJson(
+  existing: Record<string, unknown> | undefined,
+  packageMetadata: PackageMetadata,
+  opencodeDir: string
+): Record<string, unknown> {
+  const existingDependencies = getStringRecord(existing?.dependencies);
+  const pluginVersion =
+    existingDependencies["@opencode-ai/plugin"] ??
+    packageMetadata.devDependencies?.["@opencode-ai/plugin"] ??
+    packageMetadata.peerDependencies?.["@opencode-ai/plugin"] ??
+    ">=1.0.0";
+
+  return {
+    ...existing,
+    name: typeof existing?.name === "string" ? existing.name : ".opencode",
+    private: true,
+    type: "module",
+    dependencies: {
+      ...existingDependencies,
+      "@opencode-ai/plugin": pluginVersion,
+      [packageMetadata.name]: resolveWorkspacePackageSpecifier(opencodeDir, getPackageRoot(), packageMetadata.version),
+    },
+  };
+}
+
+function buildOpencodeConfig(existing: Record<string, unknown> | undefined): Record<string, unknown> {
+  const next = { ...(existing ?? {}) };
+  if (typeof next.$schema !== "string") {
+    next.$schema = "https://opencode.ai/config.json";
+  }
+  return next;
+}
+
+function generateWorkspacePluginFile(packageName: string): string {
+  return [
+    `export { id, server, default } from "../node_modules/${packageName}/dist/plugin-entry.js";`,
+    "",
+  ].join("\n");
+}
+
+function mergeGitignoreContent(existingContent?: string): string {
+  const lines = existingContent ? existingContent.split(/\r?\n/) : [];
+  const trimmed = new Set(lines.map((line) => line.trim()));
+  const requiredEntries = ["node_modules/", "package-lock.json", "rag_db/", "opencode-rag.log"];
+  const missing = requiredEntries.filter((entry) => !trimmed.has(entry));
+
+  if (!existingContent) {
+    return [
+      "# Ignore workspace-local plugin dependencies",
+      "node_modules/",
+      "package-lock.json",
+      "",
+      "# Ignore the LanceDB vector store (binary data)",
+      "rag_db/",
+      "",
+      "# Ignore logs",
+      "opencode-rag.log",
+      "",
+    ].join("\n");
+  }
+
+  if (missing.length === 0) {
+    return existingContent.endsWith("\n") ? existingContent : `${existingContent}\n`;
+  }
+
+  const merged = [...lines];
+  const lastLine = merged.length > 0 ? (merged[merged.length - 1] ?? "") : "";
+  if (lastLine.trim().length > 0) {
+    merged.push("");
+  }
+  merged.push("# OpenCodeRAG workspace state", ...missing, "");
+  return merged.join("\n");
+}
+
+function installWorkspaceDependencies(opencodeDir: string): void {
+  const quoteForCmd = (value: string): string =>
+    /[\s"]/u.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+
+  const attempts = [
+    {
+      args: ["install", "--silent", "--no-package-lock"],
+      retry: false,
+    },
+    {
+      args: [
+        "install",
+        "--silent",
+        "--no-package-lock",
+        "--ignore-scripts",
+        "--no-optional",
+      ],
+      retry: true,
+    },
+  ];
+
+  let lastError: Error | undefined;
+
+  for (const attempt of attempts) {
+    if (attempt.retry) {
+      console.log("  Retrying dependency install without native module compilation...");
+    }
+
+    const result =
+      process.platform === "win32"
+        ? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `npm ${attempt.args.map(quoteForCmd).join(" ")}`], {
+            cwd: opencodeDir,
+            stdio: "inherit",
+            env: process.env,
+          })
+        : spawnSync("npm", attempt.args, {
+            cwd: opencodeDir,
+            stdio: "inherit",
+            env: process.env,
+          });
+
+    if (result.status === 0) {
+      return;
+    }
+
+    lastError = result.error ?? new Error(`npm install exited with code ${result.status ?? 1}`);
+  }
+
+  throw lastError ?? new Error("npm install failed for workspace dependencies");
+}
+
 const program = new Command();
 
 program
   .name("opencode-rag")
   .description("Local-first RAG semantic code search")
-  .version("0.1.0");
+  .version(getPackageMetadata().version);
 
 program
   .command("index")
@@ -387,28 +572,24 @@ function generateDefaultConfigJson(): string {
   ) + "\n";
 }
 
-const DOT_OPENCODE_GITIGNORE_CONTENT = [
-  "# Ignore the LanceDB vector store (binary data)",
-  "rag_db/",
-  "",
-  "# Ignore logs",
-  "opencode-rag.log",
-  "",
-].join("\n");
-
 program
   .command("init")
-  .description("Create opencode-rag.json config and supporting files in the current workspace")
+  .description("Configure the current workspace for OpenCodeRAG")
   .option("-f, --force", "overwrite existing files")
-  .action(async (options: { force?: boolean }) => {
+  .option("--skip-install", "skip installing workspace-local plugin dependencies")
+  .action(async (options: InitOptions) => {
     const cwd = process.cwd();
+    const packageMetadata = getPackageMetadata();
     const configPath = path.join(cwd, "opencode-rag.json");
     const opencodeDir = path.join(cwd, ".opencode");
     const gitignorePath = path.join(opencodeDir, ".gitignore");
+    const opencodeConfigPath = path.join(opencodeDir, "opencode.json");
+    const pluginsDir = path.join(opencodeDir, "plugins");
+    const pluginEntryPath = path.join(pluginsDir, "rag-plugin.js");
+    const opencodePackagePath = path.join(opencodeDir, "package.json");
 
     console.log("Initializing OpenCodeRAG in workspace...\n");
 
-    // Create .opencode/ directory
     if (!existsSync(opencodeDir)) {
       mkdirSync(opencodeDir, { recursive: true });
       console.log("  Created:  .opencode/");
@@ -416,23 +597,77 @@ program
       console.log("  Exists:   .opencode/");
     }
 
-    // Create .opencode/.gitignore
-    if (!existsSync(gitignorePath) || options.force) {
-      writeFileSync(gitignorePath, DOT_OPENCODE_GITIGNORE_CONTENT, "utf-8");
-      console.log(`  ${existsSync(gitignorePath) ? "Overwrite" : "Created"}: .opencode/.gitignore`);
+    if (!existsSync(pluginsDir)) {
+      mkdirSync(pluginsDir, { recursive: true });
+      console.log("  Created:  .opencode/plugins/");
+    } else {
+      console.log("  Exists:   .opencode/plugins/");
+    }
+
+    const gitignoreExists = existsSync(gitignorePath);
+    const nextGitignoreContent = mergeGitignoreContent(
+      gitignoreExists ? readFileSync(gitignorePath, "utf-8") : undefined
+    );
+    if (!gitignoreExists || options.force || readFileSync(gitignorePath, "utf-8") !== nextGitignoreContent) {
+      writeFileSync(gitignorePath, nextGitignoreContent, "utf-8");
+      console.log(`  ${gitignoreExists ? "Updated" : "Created"}: .opencode/.gitignore`);
     } else {
       console.log("  Exists:   .opencode/.gitignore");
     }
 
-    // Create opencode-rag.json
-    if (!existsSync(configPath) || options.force) {
+    const opencodeConfigExists = existsSync(opencodeConfigPath);
+    const nextOpencodeConfig = buildOpencodeConfig(readJsonObject(opencodeConfigPath));
+    if (!opencodeConfigExists || options.force) {
+      writeJsonFile(opencodeConfigPath, nextOpencodeConfig);
+      console.log(`  ${opencodeConfigExists ? "Updated" : "Created"}: .opencode/opencode.json`);
+    } else if (JSON.stringify(readJsonObject(opencodeConfigPath)) !== JSON.stringify(nextOpencodeConfig)) {
+      writeJsonFile(opencodeConfigPath, nextOpencodeConfig);
+      console.log("  Updated:  .opencode/opencode.json");
+    } else {
+      console.log("  Exists:   .opencode/opencode.json");
+    }
+
+    const pluginEntryExists = existsSync(pluginEntryPath);
+    const pluginEntryContent = generateWorkspacePluginFile(packageMetadata.name);
+    if (!pluginEntryExists || options.force) {
+      writeFileSync(pluginEntryPath, pluginEntryContent, "utf-8");
+      console.log(`  ${pluginEntryExists ? "Updated" : "Created"}: .opencode/plugins/rag-plugin.js`);
+    } else if (readFileSync(pluginEntryPath, "utf-8") !== pluginEntryContent) {
+      writeFileSync(pluginEntryPath, pluginEntryContent, "utf-8");
+      console.log("  Updated:  .opencode/plugins/rag-plugin.js");
+    } else {
+      console.log("  Exists:   .opencode/plugins/rag-plugin.js");
+    }
+
+    const workspacePackageExists = existsSync(opencodePackagePath);
+    const nextWorkspacePackage = buildWorkspacePackageJson(readJsonObject(opencodePackagePath), packageMetadata, opencodeDir);
+    if (!workspacePackageExists || options.force) {
+      writeJsonFile(opencodePackagePath, nextWorkspacePackage);
+      console.log(`  ${workspacePackageExists ? "Updated" : "Created"}: .opencode/package.json`);
+    } else if (JSON.stringify(readJsonObject(opencodePackagePath)) !== JSON.stringify(nextWorkspacePackage)) {
+      writeJsonFile(opencodePackagePath, nextWorkspacePackage);
+      console.log("  Updated:  .opencode/package.json");
+    } else {
+      console.log("  Exists:   .opencode/package.json");
+    }
+
+    const configExists = existsSync(configPath);
+    if (!configExists || options.force) {
       writeFileSync(configPath, generateDefaultConfigJson(), "utf-8");
-      console.log(`  ${existsSync(configPath) ? "Overwrite" : "Created"}: opencode-rag.json`);
+      console.log(`  ${configExists ? "Updated" : "Created"}: opencode-rag.json`);
     } else {
       console.log("  Exists:   opencode-rag.json");
     }
 
-    console.log("\nDone. Edit opencode-rag.json to configure, then run `opencode-rag index`.");
+    if (!options.skipInstall) {
+      console.log("\nInstalling workspace-local plugin dependencies...\n");
+      installWorkspaceDependencies(opencodeDir);
+      console.log("\n  Installed: .opencode/node_modules/");
+    } else {
+      console.log("\n  Skipped:   dependency installation (--skip-install)");
+    }
+
+    console.log("\nDone. Restart OpenCode if it is running, then run `opencode-rag index` in this workspace.");
   });
 
 if (

@@ -71,9 +71,21 @@ Workspace Files
 # Install globally
 npm install -g opencode-rag-plugin
 
-# Or in your project
-npm install --save-dev opencode-rag-plugin
+# Configure a workspace for OpenCodeRAG
+cd your-workspace
+opencode-rag init
 ```
+
+`opencode-rag init` bootstraps the current workspace by creating:
+
+- `opencode-rag.json`
+- `.opencode/.gitignore`
+- `.opencode/opencode.json`
+- `.opencode/package.json`
+- `.opencode/plugins/rag-plugin.js`
+- `.opencode/node_modules/` with the workspace-local plugin dependencies
+
+Add `--skip-install` if you only want the files without installing dependencies.
 
 ### Dependencies
 
@@ -208,8 +220,8 @@ chat.
 After cloning and installing dependencies:
 
 ```bash
-# Option 1: Use the project-local auto-loaded plugin
-# The repo already includes .opencode/plugins/rag-plugin.ts
+# Option 1: Bootstrap the current workspace
+opencode-rag init
 
 # Option 2: Build and install via npm pack
 npm run build
@@ -223,7 +235,7 @@ opencode plugin opencode-rag-plugin
 The plugin auto-detects configuration from `opencode-rag.json` or
 `.opencode/rag.json` in the project root.
 
-If you use the project-local plugin file, OpenCode auto-loads it from
+`opencode-rag init` creates a project-local plugin file that OpenCode auto-loads from
 `.opencode/plugins/` at startup and no `plugin` entry is required in
 `.opencode/opencode.json`.
 
