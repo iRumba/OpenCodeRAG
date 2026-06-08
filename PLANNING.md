@@ -1,28 +1,35 @@
 # 🛣️ Roadmap
 
-## ✅ Completed (MVP)
+## ✅ Completed / Shipped
 
-- [x] AST-based code chunking (16 languages: TypeScript, Python, Java, Go, C, C++, C#, JavaScript, Rust, Ruby, Kotlin, Swift, JSON, HTML, CSS, XML) + regex chunking (Markdown, Razor, .sln) + line-based fallback
+- [x] AST-based code chunking for 16 languages: TypeScript, Python, Java, Go, C, C++, C#, JavaScript, Rust, Ruby, Kotlin, Swift, JSON, HTML, CSS, XML
+- [x] Regex/document chunking for Markdown, Razor, .sln, and LaTeX plus document text extraction for PDF, DOCX, DOC, and Excel
+- [x] Line-based fallback chunking for unsupported formats
 - [x] Embedding providers (Ollama + OpenAI, factory-pattern dispatch)
+- [x] Proxy-aware embedding transport with config/env support, auth headers, and localhost direct-request bypass
 - [x] Vector storage (LanceDB with `memory://` test mode)
 - [x] Retrieval pipeline (embed → search → score → return)
-- [x] CLI (index, query, clear, status via commander)
-- [x] OpenCode plugin (opencode-rag-context tool, RAG-backed read override, tool.execute.after for glob/grep/list, experimental.chat.system.transform, background auto-indexing)
+- [x] CLI (`init`, `index`, `query`, `clear`, `status` via commander)
+- [x] Workspace bootstrap via `opencode-rag init` for project-local OpenCode plugin setup
+- [x] OpenCode plugin with `opencode-rag-context`, `experimental.chat.system.transform`, `chat.message` file suggestions, and background auto-indexing
+- [x] Incremental indexing (file-hash-based, manifest-backed, diff-aware)
+- [x] File watching and background re-indexing with debounced, serialized passes
 - [x] Pluggable storage via `VectorStore` interface
-- [x] Pluggable chunkers via `Chunker` interface
+- [x] Pluggable chunkers via `Chunker` interface and config-loaded custom chunkers
 - [x] Pluggable embedders via `EmbeddingProvider` interface
 - [x] JSON config with deep-merged partial overrides
 - [x] Batch embedding (configurable batch size)
-- [x] Test suite (342 tests, Node built-in runner)
+- [x] Configurable file logging
+- [x] Published npm package: `opencode-rag-plugin`
+- [x] Expanded automated test suite (472 tests, Node built-in runner)
 
 ## Short Term
 
-- [x] Incremental indexing (file-hash-based, diff-aware)
-- [x] File change watchers (auto-reindex on save)
 - [ ] Hybrid search (BM25 keyword + vector)
 - [ ] Query rewriting / multi-variant expansion
 - [ ] Context window optimization (dedup, merge adjacent chunks)
-- [x] AST chunking for more languages (Rust, Ruby, Kotlin, Swift, C, C++, C#, JavaScript, JSON, HTML, CSS, XML, Razor)
+- [ ] Better ranking/diversity for `chat.message` file suggestions
+- [ ] Clearer retrieval/debug surfaces for why files or chunks were returned
 
 ## Mid Term
 
@@ -40,7 +47,7 @@
 - [ ] Code execution-aware retrieval
 - [ ] Semantic refactoring assistant
 - [ ] Agent-based code navigation
-- [ ] Multi-modal support (diagrams, API specs, JSON schemas)
+- [ ] Richer non-code / multimodal support (diagrams, API specs, JSON schemas, YAML configs)
 - [ ] Access control (per-folder permissions, sensitive file exclusion)
 
 ---
@@ -50,13 +57,13 @@
 ## 1. 🔁 Incremental Indexing + Watch Mode
 
 Implemented with a manifest sidecar beside the LanceDB dataset. Indexing now
-hashes files, skips unchanged files, updates modified files, removes deleted or
-empty files, and safely rebuilds if the manifest is missing or corrupt while
-the store already contains rows.
+hashes files, skips unchanged files, updates modified files, removes deleted,
+empty, or too-small files, and safely rebuilds if the manifest is missing or
+corrupt while the store already contains rows.
 
 Watch mode (`index --watch`) uses chokidar to trigger debounced incremental
-passes on add/change/unlink events. Passes are serialized — a queued follow-up
-pass runs after the current pass finishes.
+passes on add/change/unlink events. Passes are serialized, and the plugin uses
+the same scheduling model for background auto-indexing inside OpenCode.
 
 ## 2. 🧠 Query Enhancement
 
@@ -88,9 +95,9 @@ count, but no quality filtering is applied.
 
 ## 7. 🧑‍💻 IDE/Editor Context Awareness
 
-Integrate with the editor's current context — active file, cursor position,
-selected code. Boosts retrieval relevance dramatically by weighting results
-near the user's current focus.
+Integrate with the editor's current context: active file, cursor position, and
+selected code. Boost retrieval relevance by weighting results near the user's
+current focus.
 
 ## 8. 🧪 Evaluation Framework
 
@@ -105,13 +112,13 @@ multi-user environments.
 ## 10. 🧠 Caching Layer
 
 Cache embeddings and query results to avoid recomputation. Batch embedding
-already reduces API calls but doesn't persist results across sessions.
+already reduces API calls but does not persist results across sessions.
 
 ## 11. 🧵 Parallel Processing
 
 Batch embedding is implemented (`embedBatch` with configurable batch size).
-Further work: multi-threaded file scanning for large repos, parallel chunking
-during indexing.
+Further work: multi-threaded file scanning for large repos and parallel
+chunking during indexing.
 
 ## 12. 🧩 Embedding Provider Extensibility
 
@@ -119,43 +126,46 @@ Already implemented via `EmbeddingProvider` interface and `createEmbedder()`
 factory. Adding a new provider means writing one class and adding a switch
 case. See `AGENTS.md` for the step-by-step guide.
 
-## 13. 🧠 Multi-Modal Support
+## 13. 🧠 Non-Code / Multimodal Retrieval
 
-Extend chunking beyond text: diagrams, JSON schemas, API specs, YAML configs.
+Initial document support is already in place via extracted text for PDF, DOC,
+DOCX, and Excel files. Future work extends beyond text extraction to richer
+artifacts such as diagrams, JSON schemas, API specs, and YAML configs.
 
 ## 14. 🧾 Prompt Templates
 
 Allow users to customize how retrieved context is formatted and injected into
-LLM prompts. Currently the plugin uses a fixed formatting pattern.
+LLM prompts. The plugin currently uses a fixed formatting pattern.
 
 ## 15. 🕵️ Debugging Tools
 
 Inspect embeddings visually, show vector distances between results, explain
-why a particular chunk was retrieved for a query.
+why a particular chunk or file was retrieved for a query.
 
 ## 16. 📉 Memory & Storage Optimization
 
-Quantized embeddings to reduce storage, pruning stale entries, garbage
+Quantized embeddings to reduce storage, pruning stale entries, and garbage
 collection on unused chunks.
 
 ---
 
 # 🎯 Summary
 
-**OpenCodeRAG** delivers a local-first semantic code search pipeline with AST
-chunking, incremental indexing, configurable embeddings, LanceDB vector
-storage, a CLI, and OpenCode plugin integration.
+**OpenCodeRAG** now delivers a local-first semantic code search pipeline with
+AST and document-aware chunking, incremental/background indexing, configurable
+embeddings with proxy support, LanceDB vector storage, a bootstrap-aware CLI,
+and OpenCode plugin integration.
 
 Key strengths:
 
 - Local + privacy-first
 - Modular architecture (interfaces + factory/adapter patterns)
-- Workspace-native
-- No native build tools required (WASM-based parsing)
+- Workspace-native bootstrap via `opencode-rag init`
+- Broad source and document coverage without native grammar build tools
 
 Key next steps:
 
-1. Hybrid search + re-ranking — retrieval quality
-2. Code graph integration — structural code understanding
-3. Context window optimization — better result packing for prompts
-4. Query rewriting / multi-variant expansion
+1. Hybrid search + re-ranking for retrieval quality
+2. Code graph integration for structural code understanding
+3. Context window optimization for better prompt packing
+4. Query rewriting and retrieval explainability

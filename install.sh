@@ -244,8 +244,8 @@ fi
 printf '\n'
 printf 'What to do next:\n'
 printf '  1. Restart OpenCode if it is running.\n'
-printf '  2. In any workspace where you want RAG context, create a config file\n'
-printf '     at PROJECT_ROOT/opencode-rag.json (or copy from %s/opencode-rag.json).\n' "$REPO_ROOT"
+printf '  2. In any workspace where you want RAG context, run "opencode-rag init".\n'
+printf '     This bootstraps opencode-rag.json and the workspace-local .opencode files.\n'
 printf '  3. Run "opencode-rag index" from that workspace to index its files.\n'
 printf '  4. OpenCode will automatically use the indexed data for context-aware queries.\n'
 printf '\n'

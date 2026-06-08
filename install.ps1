@@ -336,8 +336,8 @@ else {
 
 Write-Host "`nWhat to do next:"
 Write-Host "  1. Restart OpenCode if it is running."
-Write-Host "  2. In any workspace where you want RAG context, create a config file"
-Write-Host "     at PROJECT_ROOT\opencode-rag.json (or copy from $REPO_ROOT\opencode-rag.json)."
+Write-Host "  2. In any workspace where you want RAG context, run 'opencode-rag init'."
+Write-Host "     This bootstraps opencode-rag.json and the workspace-local .opencode files."
 Write-Host "  3. Run 'opencode-rag index' from that workspace to index its files."
 Write-Host "  4. OpenCode will automatically use the indexed data for context-aware queries."
 if ($pathUpdated) {
