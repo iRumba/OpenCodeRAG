@@ -21,6 +21,8 @@ export interface AutoIndexConfig {
   intervalMs: number;
 }
 
+export type ReadNoResultsBehavior = "hint" | "empty" | "error";
+
 export interface RagConfig {
   embedding: {
     provider: "ollama" | "openai";
@@ -47,6 +49,9 @@ export interface RagConfig {
     maxContextChunks: number;
     autoIndex?: AutoIndexConfig;
     overrideRead?: boolean;
+    maxReadOutputChars?: number;
+    readNoResultsBehavior?: ReadNoResultsBehavior;
+    readRelatedFilesMax?: number;
   };
   chunkers?: ChunkerConfig[];
   logging: LoggingConfig;

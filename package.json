@@ -33,7 +33,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "postbuild": "mkdir -p dist/types && cp src/types/opencode-plugin.d.ts dist/types/",
+    "postbuild": "node -e \"const fs=require('fs');fs.mkdirSync('dist/types',{recursive:true});fs.copyFileSync('src/types/opencode-plugin.d.ts','dist/types/opencode-plugin.d.ts');\"",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test --test-force-exit \"src/**/*.test.ts\"",
