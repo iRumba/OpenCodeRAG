@@ -208,18 +208,28 @@ When behind a corporate proxy:
 - The plugin was never broken — the npm version was stale. The `opencode plugin --global` call in install scripts was the real cause: it downloaded an old version from npm, while the local build was v1.2.0.
 
 ### PluginModule export pattern
-- OpenCode expects a module with `server` export (async `Plugin` function) and optionally `id` and `default`. The type is:
+- OpenCode uses `readV1Plugin()` which expects `module.default` to be an **object**
+  `{ id, server }`, not a bare function. The function is accessed as `default.server`.
+- Named exports (`export const server`, `export const id`) are kept for backward
+  compatibility but are not used by the V1 loader.
+- The type is:
   ```typescript
   type PluginModule = { id?: string; server: Plugin; tui?: never };
   ```
-- Use the direct export form, not re-exports, for easier debugging:
+- Use the direct object export form:
   ```typescript
   import { ragPlugin } from "./plugin.js";
-  export default ragPlugin;
   export const server = ragPlugin;
   export const id = "opencode-rag";
+  export default { id: "opencode-rag", server: ragPlugin };
   ```
-- Re-export syntax (`export { X as default } from ...`) produces the same result but is harder to inspect with DevTools or stack traces.
+- The `default` export MUST be an object, not a bare function. If `default` is
+  not a record, `readV1Plugin` returns `undefined` and OpenCode falls through to
+  `getLegacyPlugins` in `packages/opencode/src/plugin/index.ts`, which iterates
+  ALL exports and throws "Plugin export is not a function" for any non-function,
+  non-object value (like the string `id`).
+- Re-export syntax (`export { X as default } from ...`) produces the same result
+  but is harder to inspect with DevTools or stack traces.
 
 ## Adding a New Language Chunker
 
