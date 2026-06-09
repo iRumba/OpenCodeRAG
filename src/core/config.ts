@@ -51,13 +51,17 @@ export interface RagConfig {
   retrieval: {
     topK: number;
     minScore: number;
+    hybridSearch?: {
+      enabled: boolean;
+      keywordWeight: number;
+    };
   };
   openCode: {
     enabled: boolean;
     maxContextChunks: number;
     autoIndex?: AutoIndexConfig;
     autoInject?: AutoInjectConfig;
-    overrideRead?: boolean;
+    readOverride?: boolean;
     maxReadOutputChars?: number;
     readNoResultsBehavior?: ReadNoResultsBehavior;
     readRelatedFilesMax?: number;
@@ -139,11 +143,15 @@ export const DEFAULT_CONFIG: RagConfig = {
   retrieval: {
     topK: 10,
     minScore: 0,
+    hybridSearch: {
+      enabled: true,
+      keywordWeight: 0.4,
+    },
   },
   openCode: {
     enabled: true,
     maxContextChunks: 5,
-    overrideRead: false,
+    readOverride: false,
     autoIndex: {
       enabled: true,
       debounceMs: 5000,
@@ -196,6 +204,10 @@ export function loadConfig(filePath: string): RagConfig {
     retrieval: {
       ...DEFAULT_CONFIG.retrieval,
       ...parsed.retrieval,
+      hybridSearch: {
+        ...DEFAULT_CONFIG.retrieval.hybridSearch,
+        ...((parsed.retrieval as Record<string, unknown> | undefined)?.hybridSearch as Partial<typeof DEFAULT_CONFIG.retrieval.hybridSearch> | undefined ?? {}),
+      } as { enabled: boolean; keywordWeight: number },
     },
     openCode: (() => {
       const base = DEFAULT_CONFIG.openCode;

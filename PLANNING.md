@@ -21,12 +21,12 @@
 - [x] Batch embedding (configurable batch size)
 - [x] Configurable file logging
 - [x] Published npm package: `opencode-rag-plugin`
-- [x] Expanded automated test suite (472 tests, Node built-in runner)
+- [x] Expanded automated test suite (511 tests, Node built-in runner)
 - [x] Auto-context injection on `chat.message` — high-confidence chunks are injected directly into messages, saving tool-call round-trips
+- [x] Hybrid search (TF×IDF keyword + vector fusion) — weighted `(1-kw)*vScore + kw*kScore` merging with CamelCase/snake_case tokenizer
 
 ## Short Term
 
-- [ ] Hybrid search (BM25 keyword + vector)
 - [ ] Query rewriting / multi-variant expansion
 - [ ] Context window optimization (dedup, merge adjacent chunks)
 - [ ] Better ranking/diversity for `chat.message` file suggestions
@@ -82,11 +82,9 @@ dependencies, class hierarchies. Enables "where is this function used?" and
 After vector search, use a cross-encoder or lightweight LLM to re-rank results.
 Drastically improves precision for ambiguous queries.
 
-## 5. 🧱 Hybrid Search (BM25 + Vector)
+## 5. 🧱 Hybrid Search (Keyword + Vector)
 
-Combine exact keyword matching with semantic search. On codebases, function
-names and type identifiers benefit from exact matching while natural language
-queries benefit from vector search.
+Implemented as TF×IDF inverted index with zero dependencies. `retrieval.hybridSearch.keywordWeight` controls the fusion balance (default 0.4). Tokenizer handles CamelCase, snake_case, and code-specific patterns.
 
 ## 6. 🧾 Context Window Optimization
 

@@ -1,6 +1,6 @@
 import type { Plugin, PluginInput, Hooks, ToolDefinition } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin/tool";
-import type { EmbeddingProvider, VectorStore, SearchResult } from "./core/interfaces.js";
+import type { EmbeddingProvider, KeywordIndex, VectorStore, SearchResult } from "./core/interfaces.js";
 import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
 import { createEmbedder } from "./embedder/factory.js";
 import { LanceDBStore } from "./vectorstore/lancedb.js";
@@ -8,6 +8,7 @@ import { retrieve } from "./retriever/retriever.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { appendDebugLog } from "./core/fileLogger.js";
 import { createBackgroundIndexer } from "./watcher.js";
+import { createRagReadTool } from "./opencode/create-read-tool.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -259,10 +260,12 @@ async function retrieveContext(
   store: VectorStore,
   topK: number,
   retrieveFn: typeof retrieve = retrieve,
-  minScore = 0
+  minScore = 0,
+  keywordIndex?: KeywordIndex,
+  keywordWeight?: number
 ): Promise<SearchResult[]> {
   if (query.trim().length === 0) return [];
-  return retrieveFn(query, embedder, store, { topK, minScore });
+  return retrieveFn(query, embedder, store, { topK, minScore, keywordIndex, keywordWeight });
 }
 
 async function loadRetrievedResults(
@@ -272,12 +275,14 @@ async function loadRetrievedResults(
   cfg: RagConfig,
   retrieveFn: typeof retrieve = retrieve,
   topK = cfg.retrieval.topK,
-  extraQuery?: string
+  extraQuery?: string,
+  keywordIndex?: KeywordIndex
 ): Promise<SearchResult[]> {
   const minScore = cfg.retrieval.minScore;
-  const primaryResults = await retrieveContext(query, embedder, store, topK, retrieveFn, minScore);
+  const kw = cfg.retrieval.hybridSearch?.keywordWeight;
+  const primaryResults = await retrieveContext(query, embedder, store, topK, retrieveFn, minScore, keywordIndex, kw);
   const extraResults = extraQuery
-    ? await retrieveContext(extraQuery, embedder, store, topK, retrieveFn, minScore)
+    ? await retrieveContext(extraQuery, embedder, store, topK, retrieveFn, minScore, keywordIndex, kw)
     : [];
 
   return dedupeResults([...primaryResults, ...extraResults])
@@ -305,6 +310,7 @@ type CreateRagHooksOptions = {
   dependencies?: Partial<RagPluginDependencies>;
   store?: VectorStore;
   embedder?: EmbeddingProvider;
+  keywordIndex?: KeywordIndex;
 };
 
 function formatFileList(results: SearchResult[], worktree: string): string {
@@ -331,6 +337,7 @@ function formatFileList(results: SearchResult[], worktree: string): string {
   if (sorted.length === 0) return "";
 
   const lines: string[] = [];
+  lines.push("Relevant files:");
   for (const [filePath, info] of sorted) {
     const relPath = path.relative(worktree, filePath).replace(/\\/g, "/");
     const minLine = Math.min(...info.lines);
@@ -339,7 +346,7 @@ function formatFileList(results: SearchResult[], worktree: string): string {
     const lang = results.find((r) => r.chunk.metadata.filePath === filePath)?.chunk.metadata.language ?? "";
     lines.push(`${relPath} (${lang}, lines ${minLine}-${maxLine}, relevance ${relevance})`);
   }
-  lines.push(`\n(Showing top ${sorted.length} relevant files. Run "${CONTEXT_TOOL_NAME}" tool with path hints for more targeted context.)`);
+  lines.push(`\nRun "${CONTEXT_TOOL_NAME}" tool with path hints for targeted context.`);
   let linesReturn = lines.join("\n");
   return linesReturn;
 }
@@ -383,6 +390,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   };
   const embedder = options.embedder ?? dependencies.createEmbedder(options.cfg);
   const store = options.store ?? dependencies.createStore(options.storePath);
+  const keywordIndex = options.keywordIndex;
 
   // Session-level caches for lazy retrieval
   const sessionLastMessage = new Map<string, string>();
@@ -393,7 +401,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     message: "OpenCode plugin initialized",
   });
 
-  const overrideRead = options.cfg.openCode.overrideRead !== false;
+  const readOverride = options.cfg.openCode.readOverride === true;
 
   const retrievalTool = tool({
     description:
@@ -433,7 +441,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           languageHints: args.languageHints,
         });
         const topK = args.topK ?? options.cfg.retrieval.topK;
-        const results = await loadRetrievedResults(query, embedder, store, options.cfg, dependencies.retrieve, topK);
+        const results = await loadRetrievedResults(query, embedder, store, options.cfg, dependencies.retrieve, topK, undefined, keywordIndex);
 
         if (results.length === 0) {
           appendVerboseLog(options.logFilePath, CONTEXT_TOOL_NAME, "retrieval completed with no matching chunks", {
@@ -508,6 +516,24 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     [CONTEXT_TOOL_NAME]: retrievalTool,
   };
 
+  if (readOverride) {
+    const readTool = createRagReadTool({
+      worktree: options.worktree,
+      config: options.cfg,
+      embedder,
+      store,
+      logFilePath: options.logFilePath,
+      sessionLastMessage,
+      sessionRetrievalCache,
+      keywordIndex,
+    });
+    tools["read"] = readTool;
+    appendDebugLog(options.logFilePath, {
+      scope: "plugin",
+      message: "Read override enabled — RAG-backed read tool registered",
+    });
+  }
+
   return {
     async event({ event }) {
       //appendVerboseLog(options.logFilePath, "event", "opencode event received", event);
@@ -537,9 +563,12 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         const count = await store.count();
         if (count === 0) return;
 
+        const hybridCfg = options.cfg.retrieval.hybridSearch;
         const results = await dependencies.retrieve(text, embedder, store, {
           topK: options.cfg.retrieval.topK,
           minScore: options.cfg.retrieval.minScore,
+          keywordIndex,
+          keywordWeight: hybridCfg?.keywordWeight,
         });
 
         if (results.length === 0) return;
@@ -585,6 +614,25 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
       }
     },
   };
+}
+
+async function loadKeywordIndex(storePath: string, logFilePath: string): Promise<KeywordIndex> {
+  const { KeywordIndex } = await import("./retriever/keyword-index.js");
+  try {
+    const index = await KeywordIndex.load(storePath);
+    appendDebugLog(logFilePath, {
+      scope: "plugin",
+      message: `Keyword index loaded (${index.count()} chunks)`,
+    });
+    return index;
+  } catch (err) {
+    appendDebugLog(logFilePath, {
+      scope: "plugin",
+      message: "Failed to load keyword index, creating empty",
+      error: err,
+    });
+    return new KeywordIndex(storePath);
+  }
 }
 
 export const ragPlugin: Plugin = async (
@@ -642,6 +690,9 @@ export const ragPlugin: Plugin = async (
 
   const store = new LanceDBStore(storePath, vectorDimension);
 
+  // Load or create keyword index for hybrid search
+  const keywordIndex = await loadKeywordIndex(storePath, logFilePath);
+
   const hooks = createRagHooks({
     cfg,
     storePath,
@@ -649,6 +700,7 @@ export const ragPlugin: Plugin = async (
     worktree: input.directory,
     embedder,
     store,
+    keywordIndex,
   });
 
   // Start background auto-indexer if enabled
@@ -661,6 +713,7 @@ export const ragPlugin: Plugin = async (
       store,
       embedder,
       logFilePath,
+      keywordIndex,
     });
 
     backgroundIndexers.set(input.directory, indexer);

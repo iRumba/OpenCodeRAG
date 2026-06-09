@@ -3,13 +3,13 @@
 ## Project status
 
 MVP implemented. All core modules are built and tested:
-- Chunking (17 AST languages + 4 regex-based + 1 PDF text + fallback)
+- Chunking (17 AST languages + 4 regex-based + 1 PDF text + 3 document text + fallback)
 - Embedding (Ollama + OpenAI)
 - Vector storage (LanceDB)
-- Retrieval pipeline
+- Retrieval pipeline (vector + hybrid keyword/vector)
 - CLI (index, query, clear, status)
-- OpenCode plugin (chat.message hook + auto-context injection + background auto-indexing)
-- Test suite (483 tests, 0 failures)
+- OpenCode plugin (chat.message hook + auto-context injection + background auto-indexing + read-override)
+- Test suite (511 tests, 0 failures)
 
 Design docs: `ReadMe.md` (project docs), `PLANNING.md` (roadmap + brainstorming),
 `docs/designs/2026-05-28-rag-plugin-mvp-design.md` (architecture design).
@@ -57,6 +57,7 @@ src/
     lancedb.ts        — LanceDBStore with memory:// support for tests
   retriever/
     retriever.ts      — retrieve(query, embedder, store, options)
+    keyword-index.ts  — KeywordIndex (inverted index, TF×IDF scoring, serialization)
   types/
     opencode-plugin.d.ts  — local type declaration for @opencode-ai/plugin
   indexer.ts          — runIndexPass, scanWorkspace, createWatchPassScheduler, createWatchIgnore
@@ -183,12 +184,21 @@ When behind a corporate proxy:
 - `formatFileList()` groups results by file path, sorts by best score, and formats as `path (lang, lines N-M)` — max 10 files, no scores or snippets.
 - Paths in file suggestions and auto-injected context are made relative via `path.relative(worktree, ...)`.
 - `extractUserMessageText()` attempts to find user message text from `output.message` (via parts/text) then falls back to `output.message.content`.
-- The old read override (`src/opencode/`, 5 modules) and `tool.execute.after` hooks (glob/grep/list) have been removed in favor of this single chat.message hook.
-- `overrideRead` config option kept for backward compatibility, defaults to `false`.
+- The old read override (`src/opencode/`, 5 modules) was briefly removed but has been revived: when `openCode.readOverride` is `true`, the plugin registers a `read` tool backed by `createRagReadTool()` that shadows OpenCode's built-in read. Agent read requests then return indexed code chunks instead of full file contents.
+- `overrideRead` config option renamed to `readOverride`, defaults to `false`.
 
 ### Plugins and module structure
 - `createRagHooks` now accepts optional pre-created `store` and `embedder` instances via `CreateRagHooksOptions`, allowing the plugin to create them with a probed vector dimension before passing them in.
 - The plugin probes the embedding dimension by sending a single `"dimension-probe"` request at startup; falls back to **384** if the probe fails.
+
+### Hybrid search (keyword + vector)
+- `KeywordIndex` in `src/retriever/keyword-index.ts` implements a zero-dependency token-based inverted index.
+- Tokenizer in `tokenize()` handles CamelCase, snake_case, and special chars from source code.
+- TF×IDF scoring: term frequency within a chunk × logarithm of inverse document frequency.
+- `retrieve()` in `retriever.ts` runs both vector and keyword search, then merges via weighted fusion: `score = (1 - kw) * vScore + kw * kScore`, where keyword scores are normalized by the top keyword result.
+- During indexing, `runIndexPass()` in `indexer.ts` maintains the keyword index alongside the vector store (add/remove/save/clear).
+- The keyword index is serialized to `${storePath}/keyword-index.json` alongside `manifest.json`.
+- The old `src/opencode/read-fallback.ts` and `src/opencode/create-read-tool.ts` now also pass `keywordIndex` through to all `retrieve()` calls.
 
 ### Global plugin installation — install scripts
 - `install.ps1` / `install.sh` install the plugin globally by: (1) `npm run build` + `npm pack`, (2) `npm install --prefix ~/.opencode/` and `--prefix ~/.config/opencode/`, (3) adding `"opencode-rag-plugin"` to `~/.config/opencode/opencode.jsonc` plugin array.

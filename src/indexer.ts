@@ -14,7 +14,7 @@ import {
   saveManifest,
   type FileManifest,
 } from "./core/manifest.js";
-import type { Chunk, EmbeddingProvider, VectorStore } from "./core/interfaces.js";
+import type { Chunk, EmbeddingProvider, KeywordIndex, VectorStore } from "./core/interfaces.js";
 import { embedBatch } from "./embedder/factory.js";
 
 export interface IndexRunStats {
@@ -64,6 +64,7 @@ export interface RunIndexPassOptions {
   embedder: EmbeddingProvider;
   force?: boolean;
   logger?: Partial<Logger>;
+  keywordIndex?: KeywordIndex;
 }
 
 export interface WatchPassScheduler {
@@ -195,6 +196,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
   const existingCount = await options.store.count();
   if (options.force || (manifestStatus !== "ok" && existingCount > 0)) {
     await options.store.clear();
+    options.keywordIndex?.clear();
     for (const key of Object.keys(manifest.files)) {
       delete manifest.files[key];
     }
@@ -213,6 +215,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
   for (const indexedPath of Object.keys(manifest.files)) {
     if (!currentPaths.has(indexedPath)) {
       await options.store.deleteByFilePath(indexedPath);
+      options.keywordIndex?.removeByFilePath(indexedPath);
       delete manifest.files[indexedPath];
       stats.deletedFiles++;
     }
@@ -227,6 +230,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
       stats.skippedEmptyFiles++;
       if (previous) {
         await options.store.deleteByFilePath(file.normalizedPath);
+        options.keywordIndex?.removeByFilePath(file.normalizedPath);
         delete manifest.files[file.normalizedPath];
         stats.removedFiles++;
         logger.info(`  ${path.relative(options.cwd, file.filePath)} (empty, removed from index)`);
@@ -240,6 +244,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
       stats.skippedSmallFiles++;
       if (previous) {
         await options.store.deleteByFilePath(file.normalizedPath);
+        options.keywordIndex?.removeByFilePath(file.normalizedPath);
         delete manifest.files[file.normalizedPath];
         stats.removedFiles++;
         logger.info(`  ${path.relative(options.cwd, file.filePath)} (too small, removed from index)`);
@@ -257,6 +262,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
 
     if (previous) {
       await options.store.deleteByFilePath(file.normalizedPath);
+      options.keywordIndex?.removeByFilePath(file.normalizedPath);
       stats.modifiedFiles++;
     } else {
       stats.newFiles++;
@@ -269,6 +275,8 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
       logger.info(`  ${path.relative(options.cwd, file.filePath)} (0 chunks, removed from index)`);
       continue;
     }
+
+    options.keywordIndex?.addChunks(chunks);
 
     const embeddings = await embedBatch(
       options.embedder,
@@ -307,6 +315,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
 
   manifest.lastIndexedAt = Date.now();
   await saveManifest(options.storePath, manifest);
+  await options.keywordIndex?.save(options.storePath);
   stats.finalCount = await options.store.count();
   return stats;
 }

@@ -26,6 +26,15 @@ export interface EmbeddingProvider {
   embed(texts: string[]): Promise<number[][]>;
 }
 
+export interface KeywordIndex {
+  addChunks(chunks: Chunk[]): void;
+  removeByFilePath(filePath: string): void;
+  search(query: string, topK: number): SearchResult[];
+  clear(): void;
+  count(): number;
+  save(filePath?: string): Promise<void>;
+}
+
 export interface VectorStore {
   addChunks(chunks: Chunk[]): Promise<void>;
   search(embedding: number[], topK: number): Promise<SearchResult[]>;

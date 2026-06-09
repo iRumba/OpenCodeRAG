@@ -1,5 +1,5 @@
 import { tool } from "@opencode-ai/plugin/tool";
-import type { EmbeddingProvider, VectorStore, SearchResult } from "../core/interfaces.js";
+import type { EmbeddingProvider, KeywordIndex, VectorStore, SearchResult } from "../core/interfaces.js";
 import type { RagConfig } from "../core/config.js";
 import { retrieve } from "../retriever/retriever.js";
 import { normalizeReadArgs, resolveWorkspacePath } from "./tool-args.js";
@@ -26,6 +26,8 @@ export interface RagReadToolOptions {
   sessionLastMessage?: Map<string, string>;
   /** Session-level retrieval cache (keyed by sessionID). */
   sessionRetrievalCache?: Map<string, { messageText: string; rawResults: SearchResult[] }>;
+  /** Optional keyword index for hybrid search. */
+  keywordIndex?: KeywordIndex;
 }
 
 /**
@@ -38,7 +40,7 @@ export interface RagReadToolOptions {
 export function createRagReadTool(
   options: RagReadToolOptions
 ): ReturnType<typeof tool> {
-  const { worktree, config, embedder, store, sessionLastMessage, sessionRetrievalCache } = options;
+  const { worktree, config, embedder, store, sessionLastMessage, sessionRetrievalCache, keywordIndex } = options;
   const openCodeCfg = config.openCode;
   const maxContextChunks = openCodeCfg.maxContextChunks;
   const maxReadOutputChars = openCodeCfg.maxReadOutputChars ?? 20000;
@@ -106,7 +108,7 @@ export function createRagReadTool(
           } else {
             // Cache miss or new message — run retrieval
             retrievalQuery = buildSessionQuery(messageText, resolvedPath, normalized);
-            rawResults = await retrieve(retrievalQuery, embedder, store, { topK: retrievalTopK });
+            rawResults = await retrieve(retrievalQuery, embedder, store, { topK: retrievalTopK, keywordIndex });
             sessionRetrievalCache.set(sessionID, { messageText, rawResults: rawResults });
           }
         } else {
@@ -117,7 +119,7 @@ export function createRagReadTool(
             startLine: normalized.startLine,
             endLine: normalized.endLine,
           });
-          rawResults = await retrieve(retrievalQuery, embedder, store, { topK: retrievalTopK });
+          rawResults = await retrieve(retrievalQuery, embedder, store, { topK: retrievalTopK, keywordIndex });
         }
 
         // 6. Collect related files from raw results (before filtering)

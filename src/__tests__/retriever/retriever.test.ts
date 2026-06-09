@@ -1,8 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { retrieve } from "../../retriever/retriever.js";
+import { KeywordIndex } from "../../retriever/keyword-index.js";
 import type {
   EmbeddingProvider,
+  KeywordIndex as KeywordIndexInterface,
   VectorStore,
   SearchResult,
   Chunk,
@@ -89,7 +91,8 @@ describe("retrieve", () => {
     };
 
     await retrieve("query", embedder, store, { topK: 5 });
-    assert.equal(receivedTopK, 5);
+    // retrieve() multiplies topK by vectorFactor (3) for the store search
+    assert.equal(receivedTopK, 15);
   });
 
   it("uses default topK of 10", async () => {
@@ -109,7 +112,8 @@ describe("retrieve", () => {
     };
 
     await retrieve("query", embedder, store);
-    assert.equal(receivedTopK, 10);
+    // retrieve() multiplies topK by vectorFactor (3) for the store search
+    assert.equal(receivedTopK, 30);
   });
 
   it("filters results below minScore", async () => {
@@ -135,5 +139,71 @@ describe("retrieve", () => {
 
     const results = await retrieve("query", embedder, store, { minScore: 0 });
     assert.equal(results.length, 2);
+  });
+
+  describe("hybrid search", () => {
+    function makeKeywordIndex(results: SearchResult[]): KeywordIndexInterface {
+      const ki = new KeywordIndex();
+      ki.addChunks(results.map((r) => r.chunk));
+      return ki;
+    }
+
+    it("falls back to vector-only when no keywordIndex provided", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.9, chunk: { id: "a", content: "function foo", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const results = await retrieve("query", embedder, store, { keywordIndex: undefined });
+      assert.equal(results.length, 1);
+    });
+
+    it("falls back to vector-only when keywordIndex has no matches", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.9, chunk: { id: "a", content: "function foo", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const ki = new KeywordIndex();
+      ki.addChunks([{ id: "b", content: "unrelated data", metadata: { filePath: "b.ts", startLine: 1, endLine: 2, language: "ts" } }]);
+      const results = await retrieve("query with no keyword match", embedder, store, { keywordIndex: ki });
+      assert.equal(results.length, 1);
+    });
+
+    it("combines vector and keyword results with default weight", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.8, chunk: { id: "a", content: "apple banana", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const ki = makeKeywordIndex([
+        { score: 0, chunk: { id: "b", content: "apple banana cherry", metadata: { filePath: "b.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const results = await retrieve("apple banana", embedder, store, { keywordIndex: ki, keywordWeight: 0.4, minScore: 0 });
+      assert.equal(results.length, 2);
+      // Vector-only chunk (a) ranks highest because it has vScore 0.8, keyword-only (b) has kScore only
+      assert.equal(results[0]!.chunk.id, "a");
+    });
+
+    it("respects keywordWeight parameter", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.9, chunk: { id: "a", content: "some code", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const ki = makeKeywordIndex([
+        { score: 0, chunk: { id: "b", content: "specific keyword match content here", metadata: { filePath: "b.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const kwResults = await retrieve("keyword match", embedder, store, { keywordIndex: ki, keywordWeight: 0.9, minScore: 0 });
+      const vecResults = await retrieve("keyword match", embedder, store, { keywordIndex: ki, keywordWeight: 0.1, minScore: 0 });
+      assert.equal(kwResults.length, 2);
+      assert.equal(vecResults.length, 2);
+    });
+
+    it("applies minScore filter on combined scores", async () => {
+      const embedder = makeEmbedder([[0.1, 0.2, 0.3]]);
+      const store = makeStore([
+        { score: 0.1, chunk: { id: "a", content: "low relevance", metadata: { filePath: "a.ts", startLine: 1, endLine: 2, language: "ts" } } },
+      ]);
+      const ki = makeKeywordIndex([]);
+      const results = await retrieve("test", embedder, store, { keywordIndex: ki, minScore: 0.5 });
+      assert.equal(results.length, 0);
+    });
   });
 });

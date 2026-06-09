@@ -27,11 +27,16 @@
   },
   "retrieval": {
     "topK": 10,
-    "minScore": 0.5
+    "minScore": 0.5,
+    "hybridSearch": {
+      "enabled": true,
+      "keywordWeight": 0.4
+    }
   },
   "openCode": {
     "enabled": true,
     "maxContextChunks": 10,
+    "readOverride": true,
     "autoIndex": {
       "enabled": true,
       "debounceMs": 2000,

@@ -534,7 +534,7 @@ describe("ragPlugin", () => {
 
     const resultText = (output.parts[0] as Record<string, unknown>).text as string;
     assert.doesNotMatch(resultText, /Auto-retrieved code context/);
-    assert.match(resultText, /Showing top.*relevant files/);
+    assert.match(resultText, /Relevant files:/);
   });
 
   it("respects maxChunks limit for auto-injection", async () => {
