@@ -198,6 +198,13 @@ function generateWorkspacePluginFile(packageName: string): string {
   ].join("\n");
 }
 
+function generateWorkspaceTuiPluginFile(packageName: string): string {
+  return [
+    `export { default } from "../node_modules/${packageName}/dist/tui.js";`,
+    "",
+  ].join("\n");
+}
+
 function mergeGitignoreContent(existingContent?: string): string {
   const lines = existingContent ? existingContent.split(/\r?\n/) : [];
   const trimmed = new Set(lines.map((line) => line.trim()));
@@ -594,6 +601,7 @@ program
     const opencodeConfigPath = path.join(opencodeDir, "opencode.json");
     const pluginsDir = path.join(opencodeDir, "plugins");
     const pluginEntryPath = path.join(pluginsDir, "rag-plugin.js");
+    const tuiPluginEntryPath = path.join(pluginsDir, "rag-tui.js");
     const opencodePackagePath = path.join(opencodeDir, "package.json");
 
     console.log("Initializing OpenCodeRAG in workspace...\n");
@@ -645,6 +653,18 @@ program
       console.log("  Updated:  .opencode/plugins/rag-plugin.js");
     } else {
       console.log("  Exists:   .opencode/plugins/rag-plugin.js");
+    }
+
+    const tuiPluginEntryExists = existsSync(tuiPluginEntryPath);
+    const tuiPluginEntryContent = generateWorkspaceTuiPluginFile(packageMetadata.name);
+    if (!tuiPluginEntryExists || options.force) {
+      writeFileSync(tuiPluginEntryPath, tuiPluginEntryContent, "utf-8");
+      console.log(`  ${tuiPluginEntryExists ? "Updated" : "Created"}: .opencode/plugins/rag-tui.js`);
+    } else if (readFileSync(tuiPluginEntryPath, "utf-8") !== tuiPluginEntryContent) {
+      writeFileSync(tuiPluginEntryPath, tuiPluginEntryContent, "utf-8");
+      console.log("  Updated:  .opencode/plugins/rag-tui.js");
+    } else {
+      console.log("  Exists:   .opencode/plugins/rag-tui.js");
     }
 
     const workspacePackageExists = existsSync(opencodePackagePath);
