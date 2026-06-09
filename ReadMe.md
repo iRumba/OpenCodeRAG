@@ -95,15 +95,7 @@ cd your-workspace
 opencode-rag init
 ```
 
-`opencode-rag init` bootstraps the current workspace by creating:
-
-- `opencode-rag.json`
-- `.opencode/.gitignore`
-- `.opencode/opencode.json`
-- `.opencode/package.json`
-- `.opencode/plugins/rag-plugin.js` (workspace-local plugin fallback)
-- `.opencode/node_modules/` with the workspace-local plugin dependencies
-
+`opencode-rag init` bootstraps the current workspace by creating all relevant files and sample configuration.
 Add `--skip-install` if you only want the files without installing dependencies.
 
 ### Uninstallation
@@ -120,17 +112,7 @@ To completely remove OpenCodeRAG from your system, run the uninstall script:
 ./install.sh uninstall
 ```
 
-This will remove:
-- CLI wrapper from `~/.local/bin/`
-- Plugin installations from `~/.config/opencode/node_modules/`
-- Plugin installations from `~/.opencode/node_modules/`
-- .tgz package files
-- Plugin entries from OpenCode configuration files
-- Legacy workspace-local plugin files
-
 After uninstallation, restart OpenCode if it is running.
-
-### Dependencies
 
 ### Dependencies
 
@@ -298,14 +280,8 @@ opencode-rag init
 .\install.ps1 uninstall    # Windows
 ```
 
-The plugin auto-detects configuration from `opencode-rag.json` or
-`.opencode/opencode-rag.json` or `.opencode/rag.json` in the project root.
-
-`opencode-rag init` creates a workspace-local plugin file at `.opencode/plugins/rag-plugin.js`
-that re-exports from `node_modules/`, serving as a fallback when global loading fails.
-No `plugin` entry is required in `.opencode/opencode.json`.
-
-Restart OpenCode after changing plugin files or plugin configuration.
+The plugin reads its configuration from `opencode-rag.json` in the project root.
+Remember to restart OpenCode after changing plugin files or plugin configuration.
 
 ### Logging
 
@@ -359,7 +335,7 @@ suggestions to the message. Look for lines like
 ```
 
 The plugin registers itself in the system prompt via the
-`experimental.chat.system.transform` hook, so compliant agents will see a
+`experimental.chat.system.transform` hook, so that the opencode agents will see a
 reminder about the `opencode-rag-context` tool in their system instructions.
 
 ## Data Model
@@ -476,28 +452,8 @@ npm test
 node --import tsx --test src/__tests__/chunker/fallback.test.ts
 ```
 
-Project structure:
-```
-  src/
-    core/          — interfaces.ts, config.ts
-    chunker/       — grammar.ts, base.ts, language chunkers, fallback.ts, factory.ts, uuid.ts
-    embedder/      — ollama.ts, openai.ts, factory.ts
-    vectorstore/   — lancedb.ts
-    retriever/     — retriever.ts
-    types/         — opencode-plugin.d.ts
-    indexer.ts     — incremental indexing + watch scheduling
-    watcher.ts     — background indexer (chokidar + debounced scheduler + periodic timer)
-    cli.ts, plugin.ts, plugin-entry.ts, index.ts
-    __tests__/     — mirrors the module structure
-```
-
 Test framework is Node's built-in runner (`node:test`) with `tsx` for TypeScript
 imports. No test library dependencies.
-
-## Limitations
-
-- Embedding model dimension is auto-probed at startup; falls back to 384 if probing fails.
-- 21 built-in chunkers (AST for 16, regex for 4, PDF text for 1) + configurable fallback
 
 ## Privacy
 
