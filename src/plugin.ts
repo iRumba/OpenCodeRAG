@@ -284,7 +284,7 @@ function formatFileList(results: SearchResult[], worktree: string): string {
 
   const lines: string[] = [];
   for (const [filePath, info] of sorted) {
-    const relPath = path.relative(worktree, filePath);
+    const relPath = path.relative(worktree, filePath).replace(/\\/g, "/");
     const minLine = Math.min(...info.lines);
     const maxLine = Math.max(...info.lines);
     const relevance = Math.max(...info.scores).toFixed(2);

@@ -108,6 +108,10 @@ describe("opencode-rag init", () => {
   });
 
   it("resolves symlinked cli entrypoints", async () => {
+    // Skip on Windows due to symlink permission requirements
+    if (process.platform === "win32") {
+      return;
+    }
     const cliModuleFileUrl = new URL("../cli.ts", import.meta.url);
     const cliModuleUrl = cliModuleFileUrl.href;
     symlinkSync(fileURLToPath(cliModuleFileUrl), symlinkPath);

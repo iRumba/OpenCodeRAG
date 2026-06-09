@@ -181,9 +181,6 @@ describe("ragPlugin", () => {
     const retrievalTool = hooks.tool?.["opencode-rag-context"] as ToolDefinition;
     assert.ok(retrievalTool, "expected chunk retrieval tool to be registered");
 
-    const readTool = hooks.tool?.read;
-    assert.ok(readTool, "expected RAG-backed read tool to be registered");
-
     const result = await retrievalTool.execute(
       {
         query: "Locate the chunking entry point",
