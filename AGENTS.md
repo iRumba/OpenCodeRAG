@@ -211,6 +211,35 @@ When behind a corporate proxy:
 - The install scripts clean up old `.opencode/plugins/` directories from a previous era, but the init command must recreate the local plugin file for workspaces that haven't run the global install.
 - Never remove the workspace-local plugin creation from `cli.ts`; it is the safety net when global plugin loading fails.
 
+### "Plugin export is not a function" error (OpenCode v1.17.0)
+
+This error occurs when OpenCode tries to load the plugin via the `"plugin"` key in
+the OpenCode config (`~/.config/opencode/opencode.jsonc` or `.opencode/opencode.json`).
+It is caused by module resolution differences in Bun's runtime vs Node.js.
+
+**Fix**: Do NOT register the plugin via `"plugin": ["opencode-rag-plugin"]` in
+OpenCode config. Instead, rely on `.opencode/plugins/*.js` auto-discovery:
+
+1. Run `npx opencode-rag init` to create `.opencode/plugins/rag-plugin.js`
+2. The generated file should use `import` + `export default` (not `export { default } from`):
+   ```js
+   import plugin from "../node_modules/opencode-rag-plugin/dist/plugin-entry.js";
+   export const id = plugin.id;
+   export const server = plugin.server;
+   export default plugin;
+   ```
+3. The TUI plugin file (`.opencode/plugins/rag-tui.js`) must default-export an
+   object with `server()` — OpenCode v1.17.0 no longer supports `tui`-only plugins:
+   ```js
+   const plugin = {
+     id: "opencode-rag-plugin:tui",
+     server: async () => ({}),
+   };
+   export default plugin;
+   ```
+4. Remove stale `"plugin"` entries from all OpenCode config files — they trigger
+   npm resolution which fails and produces the error.
+
 ### Plugin export debugging
 - If OpenCode reports "Plugin export is not a function", verify with BOTH dynamic import and require before assuming it is an OpenCode loader bug:
   ```bash

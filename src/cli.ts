@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import path from "node:path";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import chokidar from "chokidar";
@@ -9,7 +10,6 @@ import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./
 import { appendDebugLog } from "./core/fileLogger.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { createEmbedder } from "./embedder/factory.js";
-import { LanceDBStore } from "./vectorstore/lancedb.js";
 import { retrieve } from "./retriever/retriever.js";
 import type { KeywordIndex } from "./core/interfaces.js";
 import {
@@ -204,16 +204,57 @@ function buildOpencodeConfig(existing: Record<string, unknown> | undefined): Rec
   return next;
 }
 
+export function removeStaleGlobalPluginRegistrations(homeDir: string, pluginName: string): string[] {
+  const globalConfigDir = path.join(homeDir, ".config", "opencode");
+  const updatedPaths: string[] = [];
+
+  for (const cfgFile of ["opencode.jsonc", "opencode.json"]) {
+    const configPath = path.join(globalConfigDir, cfgFile);
+    if (!existsSync(configPath)) {
+      continue;
+    }
+
+    try {
+      const cfg = readJsonObject(configPath);
+      if (!cfg || !Array.isArray(cfg.plugin)) {
+        continue;
+      }
+
+      const nextPlugins = cfg.plugin.filter((entry): entry is string => typeof entry === "string" && entry !== pluginName);
+      if (nextPlugins.length === cfg.plugin.length) {
+        continue;
+      }
+
+      if (nextPlugins.length > 0) {
+        cfg.plugin = nextPlugins;
+      } else {
+        delete cfg.plugin;
+      }
+
+      writeJsonFile(configPath, cfg);
+      updatedPaths.push(configPath);
+    } catch {
+      // Ignore malformed OpenCode config files and leave them unchanged.
+    }
+  }
+
+  return updatedPaths;
+}
+
 function generateWorkspacePluginFile(packageName: string): string {
   return [
-    `export { id, server, default } from "../node_modules/${packageName}/dist/plugin-entry.js";`,
+    `import plugin from "../node_modules/${packageName}/dist/plugin-entry.js";`,
+    `export const id = plugin.id;`,
+    `export const server = plugin.server;`,
+    `export default plugin;`,
     "",
   ].join("\n");
 }
 
 function generateWorkspaceTuiPluginFile(packageName: string): string {
   return [
-    `export { default } from "../node_modules/${packageName}/dist/tui.js";`,
+    `import plugin from "../node_modules/${packageName}/dist/tui.js";`,
+    `export default plugin;`,
     "",
   ].join("\n");
 }
@@ -337,6 +378,7 @@ program
       }
       logCliInfo(logFilePath, "index", `  Vector dimension:   ${vectorDimension}`);
 
+      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
       const store = new LanceDBStore(
         path.resolve(cwd, config.vectorStore.path),
         vectorDimension
@@ -445,6 +487,7 @@ program
       logCliInfo(logFilePath, "query", `Top-K: ${parseInt(options.topK ?? "10", 10)}`);
 
       const embedder = createEmbedder(config);
+      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
       const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
 
       const indexedCount = await store.count();
@@ -496,6 +539,7 @@ program
       const config = await resolveConfig(options, logFilePath);
       logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
 
+      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
       const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
       const prevCount = await store.count();
 
@@ -529,6 +573,7 @@ program
       const config = await resolveConfig(options, logFilePath);
       logFilePath = path.resolve(cwd, resolveLogConfig(config).logFilePath);
 
+      const { LanceDBStore } = await import("./vectorstore/lancedb.js");
       const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
       const count = await store.count();
       const summary = await getIndexStatusSummary(
@@ -715,44 +760,13 @@ program
       console.log("\nInstalling workspace-local plugin dependencies...\n");
       installWorkspaceDependencies(opencodeDir);
       console.log("\n  Installed: .opencode/node_modules/");
-      // Best-effort: try to register the plugin with the OpenCode CLI so users
-      // who rely on the global `opencode` command get the plugin registered.
-      // This is non-fatal: if the CLI is missing or registration fails we
-      // continue and only warn the user.
-      try {
-        console.log("\nAttempting to register plugin with OpenCode CLI (opencode plugin)...");
-        const pluginName = packageMetadata.name;
-        // Quick availability check for the `opencode` binary
-        let opencodeAvailable = true;
-        try {
-          const check =
-            process.platform === "win32"
-              ? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", "opencode --version"], { cwd, stdio: "ignore" })
-              : spawnSync("opencode", ["--version"], { cwd, stdio: "ignore" });
-          if (check && (check as any).error) {
-            opencodeAvailable = false;
-          }
-        } catch {
-          opencodeAvailable = false;
+      const updatedGlobalConfigs = removeStaleGlobalPluginRegistrations(os.homedir(), packageMetadata.name);
+      if (updatedGlobalConfigs.length > 0) {
+        for (const configPath of updatedGlobalConfigs) {
+          console.log(`  Removed stale plugin registration from ${configPath}`);
         }
-
-        if (!opencodeAvailable) {
-          console.log("  opencode CLI not found in PATH; skipping plugin registration.");
-        } else {
-          const regResult =
-            process.platform === "win32"
-              ? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `opencode plugin ${pluginName}`], { cwd, stdio: "inherit", env: process.env })
-              : spawnSync("opencode", ["plugin", pluginName], { cwd, stdio: "inherit", env: process.env });
-
-          if (regResult && regResult.status === 0) {
-            console.log("  Registered via opencode plugin");
-          } else {
-            console.log("  opencode plugin returned a non-zero exit code; registration may have failed.");
-          }
-        }
-      } catch (err) {
-        console.log(`  Registration via 'opencode plugin' failed: ${err instanceof Error ? err.message : String(err)}`);
       }
+      console.log("  OpenCode loads the plugin from .opencode/plugins/rag-plugin.js; no global plugin registration is required.");
     } else {
       console.log("\n  Skipped:   dependency installation (--skip-install)");
     }

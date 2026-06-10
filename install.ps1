@@ -50,6 +50,43 @@ function ensure_user_path_contains {
     return $true
 }
 
+function register_in_opencode_config {
+    # Register PLUGIN_NAME directly in opencode.jsonc instead of using
+    # `opencode plugin <name>` which downloads from npm and can install
+    # a stale version with broken exports.
+    foreach ($cfgFile in @("opencode.jsonc", "opencode.json")) {
+        $cfgPath = Join-Path $GLOBAL_CONFIG $cfgFile
+        if (-not (Test-Path -LiteralPath $cfgPath -PathType Leaf)) { continue }
+
+        try {
+            $cfg = Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
+            if (-not $cfg.plugin) {
+                $cfg | Add-Member -MemberType NoteProperty -Name "plugin" -Value @()
+            }
+            $existing = @($cfg.plugin)
+            if ($existing -contains $PLUGIN_NAME) {
+                return $false
+            }
+            $cfg.plugin = @($existing) + @($PLUGIN_NAME)
+            $cfg | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $cfgPath -NoNewline
+            Add-Content -LiteralPath $cfgPath -Value "`n"
+            return $true
+        }
+        catch {
+            continue
+        }
+    }
+
+    # No config file found — create one
+    $cfgPath = Join-Path $GLOBAL_CONFIG "opencode.jsonc"
+    @"
+{
+  "plugin": ["$PLUGIN_NAME"]
+}
+"@ | Set-Content -LiteralPath $cfgPath -Encoding UTF8
+    return $true
+}
+
 function test_node_resolution {
     param(
         [string]$ModuleName,
@@ -237,19 +274,13 @@ else {
 # Clean up .tgz
 cleanup_tgz
 
-# Register the plugin with the OpenCode CLI
-if (Get-Command opencode -ErrorAction SilentlyContinue) {
-    step "Registering plugin with OpenCode (opencode plugin)..."
-    try {
-        & opencode 'plugin' $PLUGIN_NAME
-        if ($LASTEXITCODE -eq 0) {
-            ok "Registered via opencode plugin"
-        } else {
-            Write-Host "  'opencode plugin' returned exit code $LASTEXITCODE; registration may have failed." -ForegroundColor Yellow
-        }
-    } catch {
-        Write-Host "  Registration via 'opencode plugin' failed: $($_.Exception.Message)" -ForegroundColor Yellow
-    }
+# Register the plugin directly in opencode.jsonc (avoids stale npm version)
+step "Registering plugin in OpenCode config..."
+$regResult = register_in_opencode_config
+if ($regResult) {
+    ok "Registered"
+} else {
+    info "Plugin name already present in config (no changes needed)"
 }
 
 # Create CLI wrapper

@@ -104,7 +104,7 @@ The script will:
 2. Install it into OpenCode's runtime (`~/.opencode/node_modules/`)
 3. Register it in the global OpenCode config (`~/.config/opencode/opencode.jsonc`)
 
-**Restart OpenCode after installation.**
+**Restart OpenCode after installation.** 
 
 ---
 

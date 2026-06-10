@@ -22,6 +22,36 @@ step()  { printf '\n%s\n' "$*"; }
 ok()    { printf '  %s  OK\n' "$1"; }
 fail()  { printf '  %s  FAILED\n' "$1" >&2; }
 
+# Register PLUGIN_NAME directly in opencode.jsonc instead of using
+# `opencode plugin <name>` which downloads from npm and can install
+# a stale version with broken exports.
+register_in_config() {
+  local cfg
+  for cfg in opencode.jsonc opencode.json; do
+    local cfgpath="$GLOBAL_CONFIG/$cfg"
+    [[ -f "$cfgpath" ]] || continue
+
+    if node -e "
+      const fs = require('fs');
+      const cfg = JSON.parse(fs.readFileSync('$cfgpath', 'utf8'));
+      const plugins = cfg.plugin || [];
+      if (plugins.includes('$PLUGIN_NAME')) {
+        process.exit(1);
+      }
+      cfg.plugin = plugins.concat(['$PLUGIN_NAME']);
+      fs.writeFileSync('$cfgpath', JSON.stringify(cfg, null, 2) + '\n');
+    " 2>/dev/null; then
+      return 0
+    else
+      return 1
+    fi
+  done
+
+  # No config file found — create one
+  printf '{\n  "plugin": ["%s"]\n}\n' "$PLUGIN_NAME" > "$GLOBAL_CONFIG/opencode.jsonc"
+  return 0
+}
+
 cleanup_tgz() {
   rm -f "$GLOBAL_CONFIG/$PLUGIN_NAME-"*.tgz
 }
@@ -149,14 +179,12 @@ fi
 # Clean up .tgz
 cleanup_tgz
 
-# Register the plugin with the OpenCode CLI
-if command -v opencode >/dev/null 2>&1; then
-  step "Registering plugin with OpenCode CLI (opencode plugin)..."
-  if opencode plugin opencode-rag-plugin; then
-    ok "Registered via opencode plugin"
-  else
-    info "opencode plugin command returned non-zero exit code; registration may have failed."
-  fi
+# Register the plugin directly in opencode.jsonc (avoids stale npm version)
+step "Registering plugin in OpenCode config..."
+if register_in_config; then
+  ok "Registered"
+else
+  info "Plugin name already present in config (no changes needed)"
 fi
 
 # Create CLI wrapper (pointing to runtime's node_modules for stability)

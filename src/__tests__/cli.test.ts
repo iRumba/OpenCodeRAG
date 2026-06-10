@@ -1,6 +1,6 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -96,7 +96,6 @@ describe("opencode-rag init", () => {
     process.cwd = () => tmpDir;
 
     const configPath = join(tmpDir, "opencode-rag.json");
-    const { writeFileSync } = await import("node:fs");
     writeFileSync(configPath, "garbage", "utf-8");
 
     const { runCli } = await import("../cli.js");
@@ -105,6 +104,50 @@ describe("opencode-rag init", () => {
     const afterContent = readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(afterContent);
     assert.equal(parsed.embedding.provider, "ollama", "should contain defaults after force");
+  });
+
+  it("removes stale plugin registration from .opencode/opencode.json", async () => {
+    process.cwd = () => tmpDir;
+
+    const opencodeDir = join(tmpDir, ".opencode");
+    mkdirSync(opencodeDir, { recursive: true });
+    const opencodeConfigPath = join(opencodeDir, "opencode.json");
+    writeFileSync(
+      opencodeConfigPath,
+      JSON.stringify({
+        $schema: "https://opencode.ai/config.json",
+        plugin: ["opencode-rag-plugin"],
+      }),
+      "utf-8"
+    );
+
+    const { runCli } = await import("../cli.js");
+    await runCli(["node", "cli.ts", "init", "--skip-install"]);
+
+    const opencodeConfig = JSON.parse(readFileSync(opencodeConfigPath, "utf-8"));
+    assert.equal(opencodeConfig.$schema, "https://opencode.ai/config.json");
+    assert.equal("plugin" in opencodeConfig, false, "stale plugin registration should be removed");
+  });
+
+  it("removes stale global OpenCode plugin registrations", async () => {
+    const fakeHome = join(tmpDir, "fake-home");
+    const globalConfigDir = join(fakeHome, ".config", "opencode");
+    mkdirSync(globalConfigDir, { recursive: true });
+    const globalConfigPath = join(globalConfigDir, "opencode.jsonc");
+    writeFileSync(
+      globalConfigPath,
+      JSON.stringify({
+        plugin: ["opencode-rag-plugin", "other-plugin"],
+      }),
+      "utf-8"
+    );
+
+    const { removeStaleGlobalPluginRegistrations } = await import("../cli.js");
+    const updatedPaths = removeStaleGlobalPluginRegistrations(fakeHome, "opencode-rag-plugin");
+
+    assert.deepEqual(updatedPaths, [globalConfigPath]);
+    const opencodeConfig = JSON.parse(readFileSync(globalConfigPath, "utf-8"));
+    assert.deepEqual(opencodeConfig.plugin, ["other-plugin"]);
   });
 
   it("resolves symlinked cli entrypoints", async () => {

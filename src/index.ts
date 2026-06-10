@@ -9,4 +9,7 @@ export type { RagConfig } from "./core/config.js";
 export type { Chunk, SearchResult, Chunker, EmbeddingProvider, VectorStore } from "./core/interfaces.js";
 
 // Plugin is only importable inside OpenCode's runtime
-export { ragPlugin as server } from "./plugin.js";
+import { ragPlugin } from "./plugin.js";
+export const server = ragPlugin;
+export const id = "opencode-rag-plugin";
+export default { id, server: ragPlugin };
