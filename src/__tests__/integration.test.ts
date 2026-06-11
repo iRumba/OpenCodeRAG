@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 
 function isOpencodeAvailable(): boolean {
-  const result = spawnSync("which", ["opencode"], { encoding: "utf-8" });
-  return result.status === 0 && result.stdout.trim().length > 0;
+  const result = spawnSync("opencode", ["--version"], { encoding: "utf-8" });
+  return result.status === 0;
 }
 
 describe("opencode run integration", () => {
