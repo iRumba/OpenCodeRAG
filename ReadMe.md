@@ -32,7 +32,7 @@ When using only locally hosted embedding models and LLMs, your codebase also rem
 ### Prerequisites
 - **Node.js v22+** (required for native ESM and `fetch`).
 - **[Ollama](https://ollama.ai)** running locally (default model: `embeddinggemma`) OR an OpenAI-compatible API.
-- *(Optional)* **[OpenCode](https://opencode.ai)** if you want to use the automated agent features.
+- **[OpenCode](https://opencode.ai)** if you want to use the automated agent features.
 
 ### Installation
 
