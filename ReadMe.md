@@ -310,7 +310,7 @@ This eliminates a tool-call round-trip for roughly 70% of code-related messages.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `openCode.readOverride` | `false` | When `true`, registers a RAG-backed `read` tool that shadows OpenCode's built-in file reader — the agent gets indexed chunks instead of full file contents |
+| `openCode.readOverride` | `false` | When `true`, registers a RAG-backed `read` tool that shadows OpenCode's built-in file reader — returns full file contents with relevant RAG chunks appended as supplementary context |
 | `openCode.maxContextChunks` | `5` | Maximum chunks returned by `opencode-rag-context` |
 | `openCode.autoInject.enabled` | `true` | Enable or disable auto-injection |
 | `openCode.autoInject.minScore` | `0.75` | Minimum relevance score for auto-injection (0–1) |

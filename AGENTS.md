@@ -184,7 +184,7 @@ When behind a corporate proxy:
 - `formatFileList()` groups results by file path, sorts by best score, and formats as `path (lang, lines N-M)` — max 10 files, no scores or snippets.
 - Paths in file suggestions and auto-injected context are made relative via `path.relative(worktree, ...)`.
 - `extractUserMessageText()` attempts to find user message text from `output.message` (via parts/text) then falls back to `output.message.content`.
-- The old read override (`src/opencode/`, 5 modules) was briefly removed but has been revived: when `openCode.readOverride` is `true`, the plugin registers a `read` tool backed by `createRagReadTool()` that shadows OpenCode's built-in read. Agent read requests return indexed code chunks when available; when the file is not in the index (or the index is empty), the tool falls back to reading the actual file from disk via `readFileFallback()`. If the file also doesn't exist on disk, a retrieval error is returned.
+- When `openCode.readOverride` is `true`, the plugin registers a `read` tool backed by `createRagReadTool()` that shadows OpenCode's built-in read. The tool **always returns full file contents** from disk. When RAG chunks are available for the file (score ≥ threshold), they are appended as supplementary "Related code chunks" after the file content. If retrieval fails, the file is still returned without RAG context.
 - `overrideRead` config option renamed to `readOverride`, defaults to `false`.
 - `readNoResultsBehavior` config option is no longer used by the read tool (the fallback always reads the file), but is retained for backward compatibility.
 

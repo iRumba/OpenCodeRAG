@@ -17,20 +17,17 @@ export interface FormatReadOutputOptions {
 }
 
 /**
- * Format RAG retrieval results for the read tool output.
+ * Format RAG retrieval results for the opencode-rag-context tool output.
  *
- * The output:
- *   - Clearly states full-file reading was suppressed.
- *   - Includes request metadata (file path, query, chunk count).
- *   - Formats each chunk with file path, line range, score, and code block.
- *   - Enforces maxChars limit and appends truncation notice.
+ * Includes request metadata (file path, query, chunk count) and formats
+ * each chunk with file path, line range, score, and code block.
  *
  * Returns a string ready to return as the tool output.
  */
 export function formatReadOutput(options: FormatReadOutputOptions): string {
   const { filePath, retrievalQuery, results, maxChunks, maxChars } = options;
 
-  const header = buildHeader(filePath, retrievalQuery, results.length, maxChunks);
+  const header = buildContextHeader(filePath, retrievalQuery, results.length, maxChunks);
   let output = header;
 
   const limited = results.slice(0, maxChunks);
@@ -60,15 +57,106 @@ export function formatReadOutput(options: FormatReadOutputOptions): string {
   return output;
 }
 
-function buildHeader(
+/**
+ * Options for formatting hybrid read output (full file + RAG context).
+ */
+export interface FormatHybridReadOutputOptions {
+  /** Absolute file path. */
+  filePath: string;
+  /** Full file content (or already sliced). */
+  fileContent: string;
+  /** Optional start line (1-indexed). */
+  startLine?: number;
+  /** Optional end line (1-indexed). */
+  endLine?: number;
+  /** RAG search results to append as context. */
+  ragChunks: SearchResult[];
+  /** Related files to suggest. */
+  relatedFiles: RelatedFileEntry[];
+  /** Maximum output character count. */
+  maxChars: number;
+}
+
+/**
+ * Format hybrid read output: full file contents followed by optional RAG context.
+ *
+ * The output:
+ *   - Always includes the full file contents in a code block.
+ *   - Appends relevant RAG chunks as supplementary context when available.
+ *   - Appends related file suggestions when available.
+ *   - Enforces maxChars limit (truncates RAG section first).
+ */
+export function formatHybridReadOutput(options: FormatHybridReadOutputOptions): string {
+  const { filePath, fileContent, startLine, endLine, ragChunks, relatedFiles, maxChars } = options;
+
+  const lang = guessLanguage(filePath);
+
+  // Build the full file code block
+  const lines = fileContent.split("\n");
+  const sliceStart = startLine !== undefined ? startLine - 1 : 0;
+  const sliceEnd = endLine !== undefined ? endLine : lines.length;
+  const sliced = lines.slice(sliceStart, sliceEnd);
+  const fileBlock = "```" + lang + "\n" + sliced.join("\n") + "\n```";
+
+  // Build the RAG context section
+  let ragSection = "";
+  if (ragChunks.length > 0) {
+    const minScore = ragChunks[ragChunks.length - 1]!.score;
+    const maxScore = ragChunks[0]!.score;
+    const ragLines: string[] = [
+      "\n---\n",
+      `**Related code chunks** _(${ragChunks.length} chunk${ragChunks.length === 1 ? "" : "s"}, relevance ${minScore.toFixed(2)}\u2013${maxScore.toFixed(2)})_\n`,
+    ];
+
+    for (let i = 0; i < ragChunks.length; i++) {
+      const r = ragChunks[i]!;
+      ragLines.push(formatChunk(i + 1, r));
+    }
+
+    ragSection = ragLines.join("\n");
+  }
+
+  // Build related files section
+  let relatedSection = "";
+  if (relatedFiles.length > 0) {
+    relatedSection = "\n\n" + formatRelatedFiles(relatedFiles);
+  }
+
+  // Assemble output with maxChars enforcement
+  let output = fileBlock;
+
+  // Try adding RAG section
+  if (ragSection && (output + ragSection).length <= maxChars) {
+    output += ragSection;
+  } else if (ragSection) {
+    // Truncate RAG chunks to fit
+    const available = maxChars - output.length - 100; // leave room for truncation notice
+    if (available > 200) {
+      output += ragSection.slice(0, available) + "\n\n---\nRAG context truncated.";
+    }
+  }
+
+  // Try adding related files section
+  if (relatedSection && (output + relatedSection).length <= maxChars) {
+    output += relatedSection;
+  }
+
+  // Final safety truncation
+  if (output.length > maxChars) {
+    output = output.slice(0, maxChars) + "\n\n---\nOutput truncated.";
+  }
+
+  return output;
+}
+
+function buildContextHeader(
   filePath: string,
   retrievalQuery: string,
   totalResults: number,
   maxChunks: number
 ): string {
   const parts: string[] = [
-    "OpenCodeRAG read override active.",
-    "Full file read suppressed. Returning relevant indexed chunks instead.",
+    "OpenCodeRAG context",
     "",
     "Requested file:",
     `- ${filePath}`,
@@ -135,28 +223,16 @@ export interface FormatFileFallbackOptions {
  * Applies optional line-range slicing and enforces maxChars limit.
  */
 export function formatFileFallback(options: FormatFileFallbackOptions): string {
-  const { filePath, content, startLine, endLine, reason, maxChars } = options;
+  const { filePath, content, startLine, endLine, maxChars } = options;
 
   const lines = content.split("\n");
   const sliceStart = startLine !== undefined ? startLine - 1 : 0;
   const sliceEnd = endLine !== undefined ? endLine : lines.length;
   const sliced = lines.slice(sliceStart, sliceEnd);
 
-  const header = [
-    "OpenCodeRAG read override active.",
-    `No indexed chunks available — returning direct file contents. (${reason})`,
-    "",
-    "Requested file:",
-    `- ${filePath}`,
-    startLine !== undefined || endLine !== undefined
-      ? `Line range: ${startLine ?? 1}-${endLine ?? lines.length}`
-      : `Lines: 1-${lines.length}`,
-    "",
-  ].join("\n");
-
   const lang = guessLanguage(filePath);
   const codeBlock = "```" + lang + "\n" + sliced.join("\n") + "\n```";
-  let output = header + codeBlock;
+  let output = codeBlock;
 
   if (maxChars && output.length > maxChars) {
     output = output.slice(0, maxChars) + "\n\n---\nOutput truncated.";

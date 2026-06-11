@@ -44,7 +44,7 @@ describe("formatReadOutput", () => {
     ),
   ];
 
-  it("contains suppression notice", () => {
+  it("contains context header", () => {
     const output = formatReadOutput({
       filePath: "/project/src/indexer.ts",
       retrievalQuery: "indexing details",
@@ -52,8 +52,7 @@ describe("formatReadOutput", () => {
       maxChunks: 5,
       maxChars: 20000,
     });
-    assert.match(output, /OpenCodeRAG read override active/);
-    assert.match(output, /Full file read suppressed/);
+    assert.match(output, /OpenCodeRAG context/);
   });
 
   it("contains requested file path", () => {
