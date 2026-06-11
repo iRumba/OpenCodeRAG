@@ -53,7 +53,7 @@ OpenCodeRAG reduces token usage by replacing expensive file-read tool calls with
 
 - **[OpenCode](https://opencode.ai)** installed and configured
 - **Node.js v22+** (required for native ESM and `fetch`)
-- **[Ollama](https://ollama.ai)** running locally with an embedding model (default: `nomic-embed-text`)
+- **[Ollama](https://ollama.ai)** running locally with an embedding model (default: `embeddinggemma`)
   — or any OpenAI-compatible embedding API
 
 ---
@@ -89,19 +89,62 @@ opencode-rag index
 .\install.ps1 uninstall
 ```
 
-**Restart OpenCode after uninstalling.**
+---
 
-> **Automatic dependencies:** `apache-arrow` (LanceDB peer dependency) and `tree-sitter-wasm` (pre-built WASM grammars) are installed automatically.
+## Usage
+
+OpenCodeRAG provides two interfaces:
+
+| Interface | Best for |
+|-----------|----------|
+| **OpenCode Plugin** | Automatic retrieval and file suggestions while chatting |
+| **OpenCodeRAG CLI Interface** | Manual indexing, searching, and diagnostics |
+
+---
+
+### OpenCode Plugin
+
+The OpenCode plugin registers two hooks:
+
+| Hook | What it does |
+|------|-------------|
+| `opencode-rag-context` | A retrieval tool the agent can call directly to fetch code chunks with file paths and line ranges |
+| `chat.message` | After each user message, retrieves relevant files and appends them to the message |
+
+
+#### Auto-Injection
+
+After each message you send, the plugin:
+
+1. Extracts your message text
+2. Runs semantic retrieval against the indexed workspace
+3. **High-confidence results** (relevance ≥ `autoInject.minScore`, default `0.75`): injects the actual code chunks directly into the message — the agent gets context without a tool-call round-trip:
+   ```
+   ---
+   **Auto-retrieved code context** _(context: 2 chunks, 1 file, relevance 0.88–0.92)_
+   ---
+   [src/auth.ts:12-30] (typescript, score: 0.92)
+   ```typescript
+   function login() { ... }
+   ```
+   ---
+   ```
+4. **No high-confidence results**: falls back to a compact file list (max 10 files):
+   ```
+   src/plugin.ts (typescript, lines 10-42, relevance 0.87)
+   src/core/config.ts (typescript, lines 66-145, relevance 0.72)
+   ```
+
+This eliminates a tool-call round-trip for roughly 70% of code-related messages. The agent can still call `opencode-rag-context` for more targeted or additional context.
+
+> **Note:** Retrieval errors are silently caught — a failed search will never break the chat.
 
 ---
 
 ## Configuration
 
-Create `opencode-rag.json` in your project root (auto-detected), or point to it explicitly with `--config ./path/to/config.json`.
-
-The repository's own [`opencode-rag.json`](./opencode-rag.json) is a complete, annotated example covering all available options.
-
-**Partial overrides are supported:** only the keys you set are applied — everything else falls back to defaults. Sections are deep-merged.
+`opencode-rag init` creates `opencode-rag.json` in your project root for configuring the plugin settings.
+**Partial overrides:** only the keys you set are applied — everything else falls back to defaults. Sections are deep-merged.
 
 ---
 
@@ -137,117 +180,7 @@ The `LOG_FILE_PATH` environment variable is a fallback when no config value is s
 
 ---
 
-## Usage
-
-OpenCodeRAG provides two interfaces:
-
-| Interface | Best for |
-|-----------|----------|
-| **CLI** | Manual indexing, searching, and diagnostics |
-| **OpenCode plugin** | Automatic retrieval and file suggestions while chatting |
-
----
-
-### CLI
-
-```bash
-# Index the workspace (incremental by default)
-opencode-rag index
-
-# Force a complete re-index
-opencode-rag index --force
-
-# Watch for changes and re-index automatically
-opencode-rag index --watch
-
-# Semantic search
-opencode-rag query "How is authentication handled?"
-opencode-rag query "error handling" --top-k 5
-
-# Show index statistics
-opencode-rag status
-
-# Clear all indexed data
-opencode-rag clear
-
-# Use a custom config file
-opencode-rag index --config ./my-config.json
-```
-
-**Example `status` output:**
-```
-Indexed chunks:      1247
-Store path:          /home/user/project/.opencode/rag_db
-Embedding provider:  ollama
-Embedding model:     nomic-embed-text
-Manifest status:     ok
-Manifest entries:    42
-Last indexed:        2026-05-28 10:45:02
-Up-to-date files:    42
-Pending files:       0
-Keyword index:       enabled (1274 chunks)
-```
-
-#### How Incremental Indexing Works
-
-A manifest is stored at `<vectorStore.path>/manifest.json` and tracks file hashes, chunk counts, and the last successful index timestamp.
-
-- Only **changed files** are re-embedded; **deleted files** are removed from the store.
-- If the manifest is missing or corrupt while the store already has data, the next pass **clears and rebuilds** the entire store to prevent duplicates.
-
-#### Watch Mode
-
-```bash
-opencode-rag index --watch
-```
-
-- Runs a full initial index pass, then listens for `add`, `change`, `unlink`, and `unlinkDir` events.
-- Changes are debounced (300 ms) before triggering an incremental pass.
-- If a pass is already running, one follow-up pass is queued and starts immediately after.
-- The watcher ignores excluded directories, the vector store path, and the manifest file itself.
-- Press `Ctrl+C` to stop.
-
----
-
-### OpenCode Plugin
-
-Once installed, the plugin registers two hooks:
-
-| Hook | What it does |
-|------|-------------|
-| `opencode-rag-context` | A retrieval tool the agent can call directly to fetch code chunks with file paths and line ranges |
-| `chat.message` | After each user message, retrieves relevant files and appends them to the message |
-
-#### Auto-Injection
-
-After each message you send, the plugin:
-
-1. Extracts your message text
-2. Runs semantic retrieval against the indexed workspace
-3. **High-confidence results** (relevance ≥ `autoInject.minScore`, default `0.75`): injects the actual code chunks directly into the message — the agent gets context without a tool-call round-trip:
-   ```
-   ---
-   **Auto-retrieved code context** _(context: 2 chunks, 1 file, relevance 0.88–0.92)_
-   ---
-   [src/auth.ts:12-30] (typescript, score: 0.92)
-   ```typescript
-   function login() { ... }
-   ```
-   ---
-   ```
-4. **No high-confidence results**: falls back to a compact file list (max 10 files):
-   ```
-   src/plugin.ts (typescript, lines 10-42, relevance 0.87)
-   src/core/config.ts (typescript, lines 66-145, relevance 0.72)
-   ```
-
-This eliminates a tool-call round-trip for roughly 70% of code-related messages. The agent can still call `opencode-rag-context` for more targeted or additional context.
-
-> **Note:** Retrieval errors are silently caught — a failed search will never break the chat.
-
----
-
-#### Plugin Configuration Reference
+### OpenCode Plugin Configuration Reference
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -263,7 +196,7 @@ This eliminates a tool-call round-trip for roughly 70% of code-related messages.
 
 ---
 
-#### AGENTS.md Snippet
+### AGENTS.md Snippet
 
 Add this section to your workspace's `AGENTS.md` so the agent knows how to use the plugin:
 
@@ -294,6 +227,54 @@ bottom of user input.
 ```
 
 The plugin also injects a reminder about `opencode-rag-context` into the agent's system prompt via `experimental.chat.system.transform`.
+
+---
+
+### OpenCodeRAG CLI Interface
+The CLI interface is intended for debugging/testing purposes only.
+
+Relevant commands:
+```bash
+# Index the workspace (incremental by default)
+opencode-rag index
+
+# Force a complete re-index
+opencode-rag index --force
+
+# Watch for changes and re-index automatically
+opencode-rag index --watch
+
+# Semantic search
+opencode-rag query "How is authentication handled?"
+opencode-rag query "error handling" --top-k 5
+
+# Show index statistics
+opencode-rag status
+
+# Clear all indexed data
+opencode-rag clear
+
+# Use a custom config file
+opencode-rag index --config ./my-config.json
+```
+
+#### How Incremental Indexing Works
+
+A manifest is stored at `<vectorStore.path>/manifest.json` and tracks file hashes, chunk counts, and the last successful index timestamp.
+
+- Only **changed files** are re-embedded; **deleted files** are removed from the store.
+- If the manifest is missing or corrupt while the store already has data, the next pass **clears and rebuilds** the entire store to prevent duplicates.
+
+#### Watch Mode
+The watcher tracks file changes and automatically re-indexes changed files.
+You can run the watcher from the command line:
+```bash
+opencode-rag index --watch
+```
+
+- Runs a full initial index pass, then listens for `add`, `change`, `unlink`, and `unlinkDir` events.
+- The watcher ignores excluded directories, the vector store path, and the manifest file itself.
+- Press `Ctrl+C` to stop.
 
 ---
 
