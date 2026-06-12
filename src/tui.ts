@@ -256,8 +256,27 @@ function resolveProviderBaseUrl(provider: Provider): string {
   return baseUrl || "https://api.openai.com/v1";
 }
 
+function saveConfigValue(configPath: string, path: string[], value: unknown): void {
+  try {
+    const data: Record<string, unknown> = JSON.parse(readFileSync(configPath, "utf-8"));
+    let target = data;
+    for (let i = 0; i < path.length - 1; i++) {
+      const key = path[i]!;
+      if (!target[key] || typeof target[key] !== "object") {
+        target[key] = {};
+      }
+      target = target[key] as Record<string, unknown>;
+    }
+    target[path[path.length - 1]!] = value;
+    writeFileSync(configPath, JSON.stringify(data, null, 2), "utf-8");
+  } catch {
+    // silently ignore write errors
+  }
+}
+
 function saveModelSelection(
   storePath: string,
+  configPath: string,
   selectionValue: string,
   path: string[],
   providers?: readonly Provider[]
@@ -276,8 +295,13 @@ function saveModelSelection(
   const baseUrl = provider ? resolveProviderBaseUrl(provider) : "";
 
   saveRuntimeOverride(storePath, [section, "provider"], ragProvider);
+  saveConfigValue(configPath, [section, "provider"], ragProvider);
   saveRuntimeOverride(storePath, [section, "model"], modelId);
-  if (baseUrl) saveRuntimeOverride(storePath, [section, "baseUrl"], baseUrl);
+  saveConfigValue(configPath, [section, "model"], modelId);
+  if (baseUrl) {
+    saveRuntimeOverride(storePath, [section, "baseUrl"], baseUrl);
+    saveConfigValue(configPath, [section, "baseUrl"], baseUrl);
+  }
 
   return selectionValue;
 }
@@ -517,6 +541,7 @@ async function openSettingsDialog(api: {
             } else if (entry.type === "boolean") {
               const newVal = !entry.currentValue;
               saveRuntimeOverride(storePath, entry.path, newVal);
+              saveConfigValue(configPath!, entry.path, newVal);
               api.ui.toast({
                 variant: "success",
                 title: "Settings",
@@ -535,6 +560,7 @@ async function openSettingsDialog(api: {
                       const num = parseFloat(input);
                       if (!isNaN(num)) {
                         saveRuntimeOverride(storePath, entry.path, num);
+                        saveConfigValue(configPath!, entry.path, num);
                         api.ui.toast({
                           variant: "success",
                           title: "Settings",
@@ -558,6 +584,7 @@ async function openSettingsDialog(api: {
                     value: String(entry.currentValue),
                     onConfirm: (input: string) => {
                       saveRuntimeOverride(storePath, entry.path, input);
+                      saveConfigValue(configPath!, entry.path, input);
                       api.ui.toast({
                         variant: "success",
                         title: "Settings",
@@ -593,11 +620,12 @@ async function openSettingsDialog(api: {
                     placeholder: "e.g. ollama/my-model or openai/custom-model",
                     value: typeof entry.currentValue === "string" ? entry.currentValue : "",
                     onConfirm: (input: string) => {
-                      const saved = saveModelSelection(storePath, input, entry.path, providers);
+                      const saved = saveModelSelection(storePath, configPath!, input, entry.path, providers);
                       if (saved) {
                         entry.currentValue = saved;
                       } else if (input) {
                         saveRuntimeOverride(storePath, entry.path, input);
+                        saveConfigValue(configPath!, entry.path, input);
                         entry.currentValue = input;
                       }
                       showSettingMenu(cat);
@@ -607,7 +635,7 @@ async function openSettingsDialog(api: {
               );
               return;
             }
-            const saved = saveModelSelection(storePath, option.value, entry.path, providers);
+            const saved = saveModelSelection(storePath, configPath!, option.value, entry.path, providers);
             if (saved) {
               entry.currentValue = saved;
               api.ui.toast({
