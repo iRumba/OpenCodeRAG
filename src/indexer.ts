@@ -310,7 +310,9 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
       }
     } else {
       for (const chunk of chunks) {
-        textToEmbed.push(docPrefix + chunk.content);
+        const relPath = path.relative(options.cwd, chunk.metadata.filePath).replace(/\\/g, "/");
+        chunk.description = `${relPath}, lines ${chunk.metadata.startLine}-${chunk.metadata.endLine}`;
+        textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
       }
     }
     const embeddings = await embedBatch(options.embedder, textToEmbed, undefined, "document");
