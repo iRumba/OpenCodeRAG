@@ -13,7 +13,7 @@ import { createWatchIgnore } from "../../indexer.js";
 class TestEmbedder implements EmbeddingProvider {
   readonly name = "test";
 
-  async embed(texts: string[]): Promise<number[][]> {
+  async embed(texts: string[], _purpose?: "query" | "document"): Promise<number[][]> {
     return texts.map((text, index) => [text.length, index + 1, 0.5, -0.5]);
   }
 }

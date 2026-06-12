@@ -13,7 +13,7 @@ import type {
 function makeEmbedder(vectors: number[][]): EmbeddingProvider {
   return {
     name: "mock",
-    async embed(_texts: string[]): Promise<number[][]> {
+    async embed(_texts: string[], _purpose?: "query" | "document"): Promise<number[][]> {
       return vectors;
     },
   };

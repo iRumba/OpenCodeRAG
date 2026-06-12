@@ -19,10 +19,14 @@ export class OpenAIProvider implements EmbeddingProvider {
     this.proxy = proxy;
   }
 
-  async embed(texts: string[]): Promise<number[][]> {
+  async embed(texts: string[], purpose?: "query" | "document"): Promise<number[][]> {
+    const body: Record<string, unknown> = { model: this.model, input: texts };
+    if (purpose) {
+      body.input_type = purpose;
+    }
     const response = await postJson(
       `${this.baseUrl}/embeddings`,
-      { model: this.model, input: texts },
+      body,
       { Authorization: `Bearer ${this.apiKey}` },
       this.timeoutMs,
       this.proxy

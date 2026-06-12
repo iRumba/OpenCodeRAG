@@ -12,7 +12,7 @@ import { createRagReadTool } from "../../opencode/create-read-tool.js";
 function makeEmbedder(embeddings: number[][] = [[0.1, 0.2, 0.3]]): EmbeddingProvider {
   return {
     name: "test-embedder",
-    embed: async () => embeddings,
+    embed: async (_texts: string[], _purpose?: "query" | "document") => embeddings,
   };
 }
 

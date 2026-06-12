@@ -39,6 +39,10 @@ export interface DescriptionConfig {
   timeoutMs?: number;
   proxy?: ProxyConfig;
   systemPrompt: string;
+  batchMaxChunks?: number;
+  batchTimeoutMs?: number;
+  retryMax?: number;
+  retryBaseDelayMs?: number;
 }
 
 export interface RagConfig {
@@ -185,7 +189,11 @@ export const DEFAULT_CONFIG: RagConfig = {
     model: "qwen2.5:3b",
     timeoutMs: 60000,
     systemPrompt:
-      "You are a code analysis assistant. Given a code snippet, write a short (2-3 sentence) description of what the code does, its purpose, and key functionality. Focus on semantic meaning that would help someone searching for this code. Do not include code in your response.",
+      "You are a code analysis assistant. Describe code for embedding search in caveman style: short simple words, rough grammar. Include what code do, main names, data in, data out, side effects, errors, and search words. No markdown, no code, no line-by-line talk. If user message contains multiple chunks labeled === CHUNK N ===, describe each one separately, starting each with CHUNK N: followed by the description. For a single chunk, give the description directly.",
+    batchMaxChunks: 25,
+    batchTimeoutMs: 120000,
+    retryMax: 3,
+    retryBaseDelayMs: 1000,
   },
   logging: {
     level: "info",

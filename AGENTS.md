@@ -173,6 +173,48 @@ When behind a corporate proxy:
 - `embedding.timeoutMs` defaults to 30000 ms. The previous 5000 ms default was too short for cold starts and caused indexing failures.
 - If OpenCode starts returning no context, check whether the embedding call is still reaching the raw socket path before assuming retrieval is empty.
 
+### Embedding model quality and recommendations
+Benchmarks on code retrieval (CodeSearchNet) show model choice dramatically
+affects quality — the gap between best and worst models can be 8×:
+
+| Model | Type | Dims | MRR | R@1 | Cost |
+|---|---|---|---|---|---|
+| OpenAI text-embedding-3-small | general | 1536 | 95.0% | 91% | $0.02/1M |
+| Cohere v3 | general | 1024 | 92.8% | 87% | $0.10/1M |
+| MiniLM-L6 | general | 384 | 80.1% | 69% | Free |
+| GraphCodeBERT | code-specific | 768 | 50.9% | 39% | Free |
+| CodeBERT | code-specific | 768 | 11.7% | 6.5% | Free |
+
+Key takeaways:
+- General-purpose models (OpenAI, Cohere) outperform most open-source
+  code-specific models. Invest in model quality, not code-specificity.
+- The `description.enabled: true` pipeline (LLM-describes-chunk → embed
+  description) is an effective way to bridge code and natural language,
+  making general-purpose models perform well on code.
+- Model dimension size does not predict quality — MiniLM-L6 (384d)
+  outperformed CodeBERT (768d) by 7×.
+
+Recommended embedding models for Ollama (ranked):
+1. `bge-m3` (1024d) — multilingual, top-tier quality
+2. `mxbai-embed-large` (1024d) — high quality for English
+3. `nomic-embed-code` (768d) — code-specific, better than general `nomic-embed-text`
+   for code retrieval; supports `search_query:` / `search_document:` prefixes
+4. `nomic-embed-text` (768d) — good all-purpose, same prefix support
+5. `all-minilm:l6-v2` (384d) — fast, lightweight, ~80% of best quality
+
+Avoid old/small BERT-based models — the article shows CodeBERT (12% MRR)
+and GraphCodeBERT (51% MRR) perform far worse than any general-purpose
+alternative.
+
+Query vs document differentiation:
+- **Text prefixing** (`documentPrefix`/`queryPrefix` in config): prepends a
+  model-specific token like `search_document:` or `search_query:` to the text
+  before embedding. Works with any provider.
+- **`input_type` parameter** (OpenAI only): OpenAI's `text-embedding-3` accepts
+  `input_type: "query"` or `"document"` in the API request body, adjusting
+  model behavior internally. Both approaches are used together when using
+  OpenAI — prefix adjusts the text, `input_type` adjusts the model.
+
 ### Background auto-indexing
 - `createBackgroundIndexer()` in `src/watcher.ts` manages a chokidar file watcher, a debounced reindex scheduler, and a periodic safety-net timer.
 - The watcher uses `createWatchIgnore()` (exported from `src/indexer.ts`) to exclude the vector store path, manifest file, and configured `excludeDirs`.

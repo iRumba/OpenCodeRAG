@@ -56,7 +56,7 @@ describe("OpenAIProvider", () => {
       "sk-key"
     );
     assert.equal(typeof p.embed, "function");
-    assert.equal(p.embed.length, 1); // expects texts array parameter
+    assert.equal(p.embed.length, 2); // expects texts array + optional purpose
   });
 
   it("handles custom baseUrl with subpath", () => {

@@ -12,7 +12,7 @@ function mockEmbedder(): EmbeddingProvider & {
     name: "mock",
     get calls() { return state.calls; },
     get lastBatchSizes() { return [...state.lastBatchSizes]; },
-    async embed(texts: string[]): Promise<number[][]> {
+    async embed(texts: string[], _purpose?: "query" | "document"): Promise<number[][]> {
       state.calls++;
       state.lastBatchSizes.push(texts.length);
       // Return embedding where first element encodes the call number and position

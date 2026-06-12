@@ -17,7 +17,7 @@ import { LanceDBStore } from "../../vectorstore/lancedb.js";
 class TestEmbedder implements EmbeddingProvider {
   readonly name = "test";
 
-  async embed(texts: string[]): Promise<number[][]> {
+  async embed(texts: string[], _purpose?: "query" | "document"): Promise<number[][]> {
     return texts.map((text, index) => [text.length, index + 1, 0.5, -0.5]);
   }
 }
@@ -302,6 +302,16 @@ describe("indexer", () => {
           if (!desc) throw new Error(`No description for chunk ${chunk.id}`);
           return desc;
         },
+        async generateBatchDescriptions(chunks: Chunk[]): Promise<Map<string, string>> {
+          const result = new Map<string, string>();
+          for (const chunk of chunks) {
+            const desc = descriptions.get(chunk.id);
+            if (desc) {
+              result.set(chunk.id, desc);
+            }
+          }
+          return result;
+        },
       };
     }
 
@@ -315,13 +325,21 @@ describe("indexer", () => {
           descriptions.set(chunk.id, desc);
           return desc;
         },
+        async generateBatchDescriptions(chunks: Chunk[]): Promise<Map<string, string>> {
+          const result = new Map<string, string>();
+          for (const chunk of chunks) {
+            const desc = `Description for ${chunk.metadata.filePath}`;
+            result.set(chunk.id, desc);
+          }
+          return result;
+        },
       };
 
       // Track what text is sent to the embedder
       const embeddedTexts: string[] = [];
       const trackingEmbedder: EmbeddingProvider = {
         name: "test",
-        async embed(texts: string[]): Promise<number[][]> {
+        async embed(texts: string[], _purpose?: "query" | "document"): Promise<number[][]> {
           embeddedTexts.push(...texts);
           return texts.map((_, index) => [texts.length, index + 1, 0.5, -0.5]);
         },
@@ -350,12 +368,15 @@ describe("indexer", () => {
         async generateDescription(): Promise<string> {
           throw new Error("LLM unavailable");
         },
+        async generateBatchDescriptions(): Promise<Map<string, string>> {
+          throw new Error("LLM unavailable");
+        },
       };
 
       const embeddedTexts: string[] = [];
       const trackingEmbedder: EmbeddingProvider = {
         name: "test",
-        async embed(texts: string[]): Promise<number[][]> {
+        async embed(texts: string[], _purpose?: "query" | "document"): Promise<number[][]> {
           embeddedTexts.push(...texts);
           return texts.map((_, index) => [texts.length, index + 1, 0.5, -0.5]);
         },
@@ -381,7 +402,7 @@ describe("indexer", () => {
       const embeddedTexts: string[] = [];
       const trackingEmbedder: EmbeddingProvider = {
         name: "test",
-        async embed(texts: string[]): Promise<number[][]> {
+        async embed(texts: string[], _purpose?: "query" | "document"): Promise<number[][]> {
           embeddedTexts.push(...texts);
           return texts.map((_, index) => [texts.length, index + 1, 0.5, -0.5]);
         },
@@ -406,12 +427,19 @@ describe("indexer", () => {
         async generateDescription(): Promise<string> {
           return "A delta function.";
         },
+        async generateBatchDescriptions(chunks: Chunk[]): Promise<Map<string, string>> {
+          const result = new Map<string, string>();
+          for (const chunk of chunks) {
+            result.set(chunk.id, "A delta function.");
+          }
+          return result;
+        },
       };
 
       const embeddedTexts: string[] = [];
       const trackingEmbedder: EmbeddingProvider = {
         name: "test",
-        async embed(texts: string[]): Promise<number[][]> {
+        async embed(texts: string[], _purpose?: "query" | "document"): Promise<number[][]> {
           embeddedTexts.push(...texts);
           return texts.map(() => [0.1, 0.2, 0.3, 0.4]);
         },

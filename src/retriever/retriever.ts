@@ -18,7 +18,7 @@ export async function retrieve(
   const minScore = options.minScore ?? 0;
 
   const prefixedQuery = (options.queryPrefix ?? "") + query;
-  const embeddings = await embedder.embed([prefixedQuery]);
+  const embeddings = await embedder.embed([prefixedQuery], "query");
   const embedding = embeddings[0];
   if (!embedding || embedding.length === 0) {
     return [];

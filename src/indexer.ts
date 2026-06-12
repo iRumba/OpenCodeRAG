@@ -281,20 +281,39 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
 
     const docPrefix = options.config.embedding.documentPrefix ?? "";
     const textToEmbed: string[] = [];
-    for (const chunk of chunks) {
-      if (options.descriptionProvider) {
+
+    if (options.descriptionProvider) {
+      let descriptionMap: Map<string, string> | null = null;
+
+      if (chunks.length > 1) {
         try {
-          chunk.description = await options.descriptionProvider.generateDescription(chunk);
-          textToEmbed.push(docPrefix + chunk.description);
+          descriptionMap = await options.descriptionProvider.generateBatchDescriptions(chunks);
         } catch (err) {
-          logger.warn(`  Description generation failed for ${chunk.id}, falling back to content: ${(err as Error).message}`);
-          textToEmbed.push(docPrefix + chunk.content);
+          logger.warn(`Batch description failed, falling back to individual: ${(err as Error).message}`);
         }
-      } else {
+      }
+
+      for (const chunk of chunks) {
+        const batchDesc = descriptionMap?.get(chunk.id);
+        if (batchDesc && batchDesc.trim().length > 0) {
+          chunk.description = batchDesc;
+          textToEmbed.push(docPrefix + chunk.description);
+        } else {
+          try {
+            chunk.description = await options.descriptionProvider.generateDescription(chunk);
+            textToEmbed.push(docPrefix + chunk.description);
+          } catch (err) {
+            logger.warn(`Description generation failed for ${chunk.id}, falling back to content: ${(err as Error).message}`);
+            textToEmbed.push(docPrefix + chunk.content);
+          }
+        }
+      }
+    } else {
+      for (const chunk of chunks) {
         textToEmbed.push(docPrefix + chunk.content);
       }
     }
-    const embeddings = await embedBatch(options.embedder, textToEmbed);
+    const embeddings = await embedBatch(options.embedder, textToEmbed, undefined, "document");
 
     for (let i = 0; i < chunks.length; i++) {
       const emb = embeddings[i];

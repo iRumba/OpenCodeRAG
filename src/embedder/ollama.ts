@@ -33,7 +33,7 @@ export class OllamaProvider implements EmbeddingProvider {
     });
   }
 
-  async embed(texts: string[]): Promise<number[][]> {
+  async embed(texts: string[], _purpose?: "query" | "document"): Promise<number[][]> {
     const headers: Record<string, string> = {};
     if (this.apiKey) {
       headers.Authorization = `Bearer ${this.apiKey}`;

@@ -2,7 +2,7 @@
   "embedding": {
     "provider": "ollama",
     "baseUrl": "http://127.0.0.1:11434/api",
-    "model": "embeddinggemma:latest",
+    "model": "embeddinggemma",
     "timeoutMs": 60000,
     "documentPrefix": "search_document: ",
     "queryPrefix": "search_query: "
@@ -78,7 +78,7 @@
     "maxContextChunks": 20,
     "readOverride": true,
     "autoIndex": {
-      "enabled": true,
+      "enabled": false,
       "debounceMs": 2000,
       "intervalMs": 300000
     },
@@ -90,12 +90,12 @@
     }
   },
   "description": {
-    "enabled": true,
+    "enabled": false,
     "provider": "ollama",
     "baseUrl": "http://127.0.0.1:11434/api",
     "model": "qwen2.5:3b",
     "timeoutMs": 60000,
-    "systemPrompt": "Describe code for embedding search. Output must be caveman style: short simple words, rough grammar. Include what code do, main names, data in, data out, side effects, errors, and search words. No markdown, no code. No line-by-line talk."
+    "systemPrompt": "Describe code for embedding search. Output must be caveman style: short simple words, rough grammar. Include what code do, main names, data in, data out, side effects, errors, and search words. No markdown, no code. No line-by-line talk. If user message contains multiple chunks labeled === CHUNK N ===, describe each one separately, starting each with CHUNK N: followed by the description. For a single chunk, give the description directly."
   },
   "logging": {
     "level": "debug",

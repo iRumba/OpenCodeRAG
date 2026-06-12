@@ -23,13 +23,14 @@ export function createEmbedder(config: RagConfig): EmbeddingProvider {
 export async function embedBatch(
   embedder: EmbeddingProvider,
   texts: string[],
-  batchSize: number = 10
+  batchSize: number = 10,
+  purpose?: "query" | "document"
 ): Promise<number[][]> {
   const results: number[][] = [];
 
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize);
-    const embeddings = await embedder.embed(batch);
+    const embeddings = await embedder.embed(batch, purpose);
     results.push(...embeddings);
   }
 

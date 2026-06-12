@@ -39,7 +39,7 @@ describe("OllamaProvider", () => {
     // Actual fetch calls are not made in unit tests.
     const p = new OllamaProvider("http://localhost:11434/api", "embeddinggemma");
     assert.equal(typeof p.embed, "function");
-    assert.equal(p.embed.length, 1); // expects texts array parameter
+    assert.equal(p.embed.length, 2); // expects texts array + optional purpose
   });
 
   it("does not require apiKey for construction", () => {

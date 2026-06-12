@@ -13,6 +13,7 @@ export interface Chunk {
 
 export interface DescriptionProvider {
   generateDescription(chunk: Chunk): Promise<string>;
+  generateBatchDescriptions(chunks: Chunk[]): Promise<Map<string, string>>;
 }
 
 export interface SearchResult {
@@ -28,7 +29,7 @@ export interface Chunker {
 
 export interface EmbeddingProvider {
   readonly name: string;
-  embed(texts: string[]): Promise<number[][]>;
+  embed(texts: string[], purpose?: "query" | "document"): Promise<number[][]>;
 }
 
 export interface KeywordIndex {
