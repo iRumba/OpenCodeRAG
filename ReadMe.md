@@ -50,7 +50,7 @@ cd /path/to/your/project
 opencode-rag init
 
 # 4. Edit configuration file (optional), e.g.
-nano opencoderag.json
+nano opencode-rag.json
 
 # 4. Index your workspace
 opencode-rag index
