@@ -1,5 +1,6 @@
 import chokidar from "chokidar";
 import path from "node:path";
+import { writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { appendDebugLog } from "./core/fileLogger.js";
 import type { RagConfig } from "./core/config.js";
 import type { DescriptionProvider, EmbeddingProvider, KeywordIndex, VectorStore } from "./core/interfaces.js";
@@ -25,31 +26,34 @@ export interface CreateBackgroundIndexerOptions {
   descriptionProvider?: DescriptionProvider;
 }
 
+export type WatcherStatus = {
+  running: boolean;
+  lastRunAt: number | undefined;
+};
+
+function writeWatcherStatus(storePath: string, status: WatcherStatus): void {
+  try {
+    writeFileSync(
+      path.join(storePath, "watcher-status.json"),
+      JSON.stringify(status, null, 2),
+      "utf-8"
+    );
+  } catch {
+    // silently ignore write errors
+  }
+}
+
 export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions): BackgroundIndexer {
   const { cwd, storePath, config, store, embedder, logFilePath, keywordIndex, descriptionProvider } = options;
 
-  // Fire-and-forget initial index pass
-  runIndexPass({
-    cwd,
-    storePath,
-    config,
-    store,
-    embedder,
-    keywordIndex,
-    descriptionProvider,
-    logger: {
-      //info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
-      warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
-    },
-  }).catch((err) => {
-    appendDebugLog(logFilePath, {
-      scope: "autoIndex",
-      message: "Initial index pass failed",
-      error: err,
-    });
-  });
+  writeWatcherStatus(storePath, { running: false, lastRunAt: undefined });
+
+  const updateStatus = (partial: Partial<WatcherStatus>) => {
+    writeWatcherStatus(storePath, { running: false, lastRunAt: undefined, ...partial });
+  };
 
   const runPass = async (): Promise<void> => {
+    updateStatus({ running: true, lastRunAt: Date.now() });
     try {
       await runIndexPass({
         cwd,
@@ -60,10 +64,10 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
         keywordIndex,
         descriptionProvider,
         logger: {
-          //info: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
           warn: (message) => appendDebugLog(logFilePath, { scope: "autoIndex", message }),
         },
       });
+      updateStatus({ running: false, lastRunAt: Date.now() });
     } catch (err) {
       if (isCorruptionError(err)) {
         appendDebugLog(logFilePath, {
@@ -100,8 +104,18 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
           error: err,
         });
       }
+      updateStatus({ running: false, lastRunAt: Date.now() });
     }
   };
+
+  // Fire-and-forget initial index pass
+  runPass().catch((err) => {
+    appendDebugLog(logFilePath, {
+      scope: "autoIndex",
+      message: "Initial index pass failed",
+      error: err,
+    });
+  });
 
   const autoIndexCfg = config.openCode.autoIndex ?? { enabled: true, debounceMs: 5000, intervalMs: 300000 };
   const scheduler = createWatchPassScheduler(
@@ -146,6 +160,10 @@ export function createBackgroundIndexer(options: CreateBackgroundIndexerOptions)
       clearInterval(periodicTimer);
       scheduler.close();
       await watcher.close();
+      const statusPath = path.join(storePath, "watcher-status.json");
+      if (existsSync(statusPath)) {
+        try { unlinkSync(statusPath); } catch { /* ignore */ }
+      }
       appendDebugLog(logFilePath, {
         scope: "autoIndex",
         message: "Background indexer shut down",

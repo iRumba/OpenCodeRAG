@@ -8,6 +8,7 @@ import { LanceDBStore } from "./vectorstore/lancedb.js";
 import { retrieve } from "./retriever/retriever.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { appendDebugLog } from "./core/fileLogger.js";
+import { loadRuntimeOverrides, applyRuntimeOverrides } from "./core/runtime-overrides.js";
 import { createBackgroundIndexer } from "./watcher.js";
 import { createRagReadTool } from "./opencode/create-read-tool.js";
 import { existsSync } from "node:fs";
@@ -402,6 +403,19 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
   const store = options.store ?? dependencies.createStore(options.storePath);
   const keywordIndex = options.keywordIndex;
 
+  // Runtime overrides for live config editing from TUI
+  let cachedOverrides = loadRuntimeOverrides(options.storePath);
+  let overridesLastCheck = 0;
+  const OVERRIDES_TTL_MS = 5000;
+
+  function getEffectiveCfg(): RagConfig {
+    if (Date.now() - overridesLastCheck > OVERRIDES_TTL_MS) {
+      cachedOverrides = loadRuntimeOverrides(options.storePath);
+      overridesLastCheck = Date.now();
+    }
+    return applyRuntimeOverrides(options.cfg, cachedOverrides);
+  }
+
   // Session-level caches for lazy retrieval
   const sessionLastMessage = new Map<string, string>();
   const sessionRetrievalCache = new Map<string, { messageText: string; rawResults: SearchResult[] }>();
@@ -411,7 +425,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
     message: "OpenCode plugin initialized",
   });
 
-  const readOverride = options.cfg.openCode.readOverride === true;
+  const readOverride = getEffectiveCfg().openCode.readOverride === true;
 
   const retrievalTool = tool({
     description:
@@ -430,7 +444,7 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
             query: args.query,
             pathHints: args.pathHints ?? [],
             languageHints: args.languageHints ?? [],
-            topK: args.topK ?? options.cfg.retrieval.topK,
+            topK: args.topK ?? getEffectiveCfg().retrieval.topK,
           });
 
           return {
@@ -445,13 +459,14 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
           };
         }
 
+        const effectiveCfg = getEffectiveCfg();
         const query = buildRetrievalQuery({
           query: args.query,
           pathHints: args.pathHints,
           languageHints: args.languageHints,
         });
-        const topK = args.topK ?? options.cfg.retrieval.topK;
-        const results = await loadRetrievedResults(query, embedder, store, options.cfg, dependencies.retrieve, topK, undefined, keywordIndex, options.cfg.embedding.queryPrefix);
+        const topK = args.topK ?? effectiveCfg.retrieval.topK;
+        const results = await loadRetrievedResults(query, embedder, store, effectiveCfg, dependencies.retrieve, topK, undefined, keywordIndex, effectiveCfg.embedding.queryPrefix);
 
         if (results.length === 0) {
           appendVerboseLog(options.logFilePath, CONTEXT_TOOL_NAME, "retrieval completed with no matching chunks", {
@@ -573,18 +588,19 @@ export function createRagHooks(options: CreateRagHooksOptions): Hooks {
         const count = await store.count();
         if (count === 0) return;
 
-        const hybridCfg = options.cfg.retrieval.hybridSearch;
+        const effectiveCfg = getEffectiveCfg();
+        const hybridCfg = effectiveCfg.retrieval.hybridSearch;
         const results = await dependencies.retrieve(text, embedder, store, {
-          topK: options.cfg.retrieval.topK,
-          minScore: options.cfg.retrieval.minScore,
+          topK: effectiveCfg.retrieval.topK,
+          minScore: effectiveCfg.retrieval.minScore,
           keywordIndex,
           keywordWeight: hybridCfg?.keywordWeight,
-          queryPrefix: options.cfg.embedding.queryPrefix,
+          queryPrefix: effectiveCfg.embedding.queryPrefix,
         });
 
         if (results.length === 0) return;
 
-        const autoInjectCfg = options.cfg.openCode.autoInject;
+        const autoInjectCfg = effectiveCfg.openCode.autoInject;
         let suggestionList: string | undefined;
 
         if (autoInjectCfg?.enabled !== false) {

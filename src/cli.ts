@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import chokidar from "chokidar";
 import pc from "picocolors";
 import { loadConfig, DEFAULT_CONFIG, resolveLogConfig, type RagConfig } from "./core/config.js";
-import { createEmptyManifest, manifestPathFor, saveManifest } from "./core/manifest.js";
+
 import { appendDebugLog } from "./core/fileLogger.js";
 import { loadChunkersFromConfig } from "./chunker/loader.js";
 import { createEmbedder } from "./embedder/factory.js";
@@ -575,20 +575,14 @@ program
       const store = new LanceDBStore(path.resolve(cwd, config.vectorStore.path));
       const prevCount = await store.count();
 
-      const storePath = path.resolve(cwd, config.vectorStore.path);
-
       if (prevCount === 0) {
-        await saveManifest(storePath, createEmptyManifest());
         logCliInfo(logFilePath, "clear", c.warn("No indexed data to clear."));
-        return;
+      } else {
+        logCliInfo(logFilePath, "clear", `${c.label("Clearing")} ${c.num(prevCount)} indexed chunks...`);
       }
 
-      logCliInfo(logFilePath, "clear", `${c.label("Clearing")} ${c.num(prevCount)} indexed chunks...`);
-      await store.clear();
-      const { KeywordIndex } = await import("./retriever/keyword-index.js");
-      await KeywordIndex.clearFile(storePath);
-      await saveManifest(storePath, createEmptyManifest());
-      logCliInfo(logFilePath, "clear", `${c.success("Done.")} ${c.num(prevCount)} chunks removed, keyword index and manifest cleared.`);
+      await store.dropDatabase();
+      logCliInfo(logFilePath, "clear", `${c.success("Done.")} vector database directory removed.`);
     } catch (err) {
       const message = (err as Error).message || String(err);
       const logFilePath = path.resolve(process.cwd(), ".opencode", "opencode-rag.log");

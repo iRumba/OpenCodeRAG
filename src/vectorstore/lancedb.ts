@@ -1,5 +1,6 @@
 import * as lancedb from "@lancedb/lancedb";
 import type { Connection, Table, Version } from "@lancedb/lancedb";
+import fs from "node:fs/promises";
 import type { VectorStore, Chunk, SearchResult } from "../core/interfaces.js";
 import { normalizeFilePath } from "../core/manifest.js";
 
@@ -242,6 +243,14 @@ export class LanceDBStore implements VectorStore {
     } catch {
     }
     this.table = null;
+  }
+
+  async dropDatabase(): Promise<void> {
+    this.table = null;
+    this.db = null;
+    try {
+      await fs.rm(this.dbPath, { recursive: true, force: true });
+    } catch {}
   }
 
   async deleteByFilePath(filePath: string): Promise<void> {
