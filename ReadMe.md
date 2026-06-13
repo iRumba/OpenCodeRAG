@@ -27,7 +27,7 @@ opencode-rag index
 opencode-rag query "authentication middleware"
 ```
 
-**Prerequisites:** Node.js v22+, [Ollama](https://ollama.ai) (default) or OpenAI-compatible API.
+**Prerequisites:** Node.js v22+, [Ollama](https://ollama.ai) (default) or other LLM-hosters with installed embedding model (e.g. embeddinggemma).
 
 ## Key Features
 
