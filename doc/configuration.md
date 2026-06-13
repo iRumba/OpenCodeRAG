@@ -45,7 +45,7 @@ Controls how code chunks are converted to vector embeddings.
 | `apiKey` | `null` | API key (auto-resolved from OpenCode provider config for OpenAI) |
 | `model` | `"embeddinggemma:latest"` | Model name |
 | `timeoutMs` | `30000` | Request timeout (increase for cold starts) |
-| `proxy.url` | — | Corporatr Proxy URL (env vars take precedence) - only needed when need to connect to an external provider behind a firewall /corporatre network |
+| `proxy.url` | — | Proxy URL (env vars take precedence) - only needed when need to connect to an external provider behind a firewall /corporatre network |
 | `proxy.username` | — | Proxy auth username |
 | `proxy.password` | — | Proxy auth password |
 | `proxy.noProxy` | — | Comma-separated bypass list |
