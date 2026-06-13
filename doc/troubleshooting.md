@@ -1,0 +1,145 @@
+# Troubleshooting
+
+## Common Issues
+
+### "Plugin export is not a function" in OpenCode
+
+**Cause:** OpenCode tries to load the plugin via the `"plugin"` key in config, triggering module resolution differences in Bun vs Node.js.
+
+**Fix:**
+1. Do NOT register via `"plugin": ["opencode-rag-plugin"]` in OpenCode config
+2. Rely on `.opencode/plugins/*.js` auto-discovery instead
+3. Run `opencode-rag init` to regenerate workspace-local plugin files
+4. Remove stale `"plugin"` entries from all OpenCode config files
+
+**Verify:**
+```bash
+node --input-type=module -e \
+  "const m = await import('opencode-rag-plugin'); console.log(typeof m.default, typeof m.server)"
+```
+
+Both should be `"function"`.
+
+### No Context Returned by OpenCode
+
+**Possible causes:**
+1. Workspace not indexed yet — run `opencode-rag index`
+2. Embedding call failing — check if the raw socket path is being used correctly (see proxy section)
+3. Auto-injection score threshold too high — check `openCode.autoInject.minScore` (default 0.75)
+4. Index is stale — run `opencode-rag index --force` for a full rebuild
+
+### Embedding Timeouts
+
+**Symptom:** Indexing fails with timeout errors.
+
+**Fix:** Increase `embedding.timeoutMs` in `opencode-rag.json`. The default is 30000ms. Cold-start model loading can take longer for large models.
+
+```json
+{
+  "embedding": {
+    "timeoutMs": 60000
+  }
+}
+```
+
+### LanceDB Connection Issues
+
+**Symptom:** `@lancedb/lancedb` throws errors about missing native binary or peer dependency.
+
+**Fix:**
+```bash
+npm install --legacy-peer-deps
+```
+
+Ensure `apache-arrow` is installed — it's a peer dependency.
+
+### npm Install Fails with SSL Errors
+
+**Cause:** Corporate proxy or SSL inspection blocking npm.
+
+**Fix:**
+```bash
+set NODE_TLS_REJECT_UNAUTHORIZED=0   # Windows
+export NODE_TLS_REJECT_UNAUTHORIZED=0  # Linux/macOS
+npm install --legacy-peer-deps
+```
+
+### Proxy Issues with OpenCode
+
+When running inside OpenCode, the runtime can interfere with the normal Node HTTP stack, causing localhost Ollama calls to be redirected through the proxy.
+
+**Symptoms:**
+- Ollama calls fail or time out
+- OpenCode stops returning context
+
+**Fix:** OpenCodeRAG's `directRequest()` in `http.ts` uses raw `net`/`tls` sockets for direct requests, bypassing the patched HTTP stack. Ensure you use `http://127.0.0.1:11434/api` (not `localhost`) in config for the bypass to work.
+
+### Test Suite Hangs
+
+**Cause:** chokidar and LanceDB leave open handles.
+
+**Fix:** Always use `--test-force-exit`:
+```bash
+node --import tsx --test --test-force-exit "src/**/*.test.ts"
+```
+
+### "oldString not found in content" on ReadMe Edits
+
+The ReadMe is generated and edited by the workflow manager. If you're editing files manually, use the Read tool first to ensure you have the current content.
+
+## Logging
+
+Enable debug logging to diagnose issues:
+
+```json
+{
+  "logging": {
+    "level": "debug",
+    "logFilePath": "./.opencode/opencode-rag.log"
+  }
+}
+```
+
+The log file provides detailed information about indexing, retrieval, and plugin events.
+
+## Manifest Corruption
+
+The manifest file (`manifest.json`) uses schema versioning. If the format changes between plugin versions, a full index rebuild is triggered automatically.
+
+To manually force a rebuild:
+```bash
+opencode-rag index --force
+```
+
+## Debugging Plugin Loading
+
+```bash
+# Test dynamic import
+node --input-type=module -e \
+  "const m = await import('opencode-rag-plugin'); console.log(typeof m.default, typeof m.server)"
+
+# Test require (CommonJS fallback)
+node -e \
+  "const m = require('opencode-rag-plugin'); console.log(typeof m.default, typeof m.server)"
+```
+
+## Proxy Debugging
+
+Test whether proxy configuration is working:
+```bash
+# Check if HTTP_PROXY env var is set
+echo $HTTP_PROXY
+
+# Check if proxy auth header is correctly formed
+# The buildProxyAuthHeader() in http.ts Base64-encodes username:password
+echo -n "user:pass" | base64
+```
+
+## Watch Mode Debugging
+
+The watcher writes status to `watcher-status.json` in the store path:
+```bash
+cat .opencode/rag_db/watcher-status.json
+```
+
+This shows `running` status and `lastRunAt` timestamp for the background indexer.

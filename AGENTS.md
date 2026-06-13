@@ -15,8 +15,8 @@ MVP implemented. All core modules are built and tested:
 - Manifest schema versioning with corruption detection
 - Test suite (589 tests, 1 integration test requiring opencode binary)
 
-Design docs: `ReadMe.md` (project docs), `PLANNING.md` (roadmap + brainstorming),
-`docs/designs/2026-05-28-rag-plugin-mvp-design.md` (architecture design).
+Design docs: `ReadMe.md` (project overview), `doc/` (detailed documentation),
+`PLANNING.md` (roadmap + brainstorming).
 
 ## Tech Stack
 

@@ -1,0 +1,251 @@
+# Configuration
+
+Configuration is defined in `opencode-rag.json` (created by `opencode-rag init`). You only need to define values you want to override — missing sections inherit from `DEFAULT_CONFIG`.
+
+## Configuration Layering
+
+```
+1. DEFAULT_CONFIG (hardcoded defaults)
+2. opencode-rag.json (user overrides, deep-merged per section)
+3. runtime-overrides.json (live TUI changes, overrides everything)
+```
+
+Runtime overrides are reloaded on a 5-second TTL. See [Architecture](architecture.md#configuration-layering).
+
+## Full Configuration Reference
+
+### `embedding`
+
+Controls how code chunks are converted to vector embeddings.
+
+```json
+{
+  "embedding": {
+    "provider": "ollama",
+    "baseUrl": "http://localhost:11434/api",
+    "apiKey": null,
+    "model": "embeddinggemma:latest",
+    "timeoutMs": 30000,
+    "proxy": {
+      "url": "http://proxy.example.com:8080",
+      "username": "user",
+      "password": "pass",
+      "noProxy": "localhost,127.0.0.1,.local"
+    },
+    "documentPrefix": "search_document: ",
+    "queryPrefix": "search_query: "
+  }
+}
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `provider` | `"ollama"` | `"ollama"`, `"openai"`, or `"cohere"` |
+| `baseUrl` | `http://127.0.0.1:11434/api` | API endpoint |
+| `apiKey` | `null` | API key (auto-resolved from OpenCode provider config for OpenAI) |
+| `model` | `"embeddinggemma:latest"` | Model name |
+| `timeoutMs` | `30000` | Request timeout (increase for cold starts) |
+| `proxy.url` | — | Proxy URL (env vars take precedence) |
+| `proxy.username` | — | Proxy auth username |
+| `proxy.password` | — | Proxy auth password |
+| `proxy.noProxy` | — | Comma-separated bypass list |
+| `documentPrefix` | — | Prepended to document text before embedding (e.g., `search_document:`) |
+| `queryPrefix` | — | Prepended to query text before embedding (e.g., `search_query:`) |
+
+See [Embedding](embedding.md) for model recommendations and proxy details.
+
+### `indexing`
+
+Controls file discovery and chunking behavior.
+
+```json
+{
+  "indexing": {
+    "includeExtensions": [
+      ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
+      ".py", ".java", ".go", ".md", ".mdx",
+      ".c", ".h", ".cpp", ".hpp",
+      ".cs", ".razor", ".cshtml",
+      ".json", ".html", ".css", ".xml", ".sln",
+      ".rs", ".rb", ".kt", ".kts", ".swift",
+      ".tex", ".pdf", ".docx", ".doc", ".xls", ".xlsx"
+    ],
+    "excludeDirs": [
+      "node_modules", ".git", ".opencode", "dist", "build",
+      "__pycache__", ".venv"
+    ],
+    "chunkOverlap": 0,
+    "minFileSizeBytes": 0
+  }
+}
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `includeExtensions` | *(40+ extensions)* | File extensions to index |
+| `excludeDirs` | *(7 dirs)* | Directories to skip |
+| `chunkOverlap` | `0` | Overlap between adjacent chunks |
+| `minFileSizeBytes` | `0` | Skip files smaller than this (files below threshold are also removed from index) |
+
+### `vectorStore`
+
+```json
+{
+  "vectorStore": {
+    "path": "./.opencode/rag_db"
+  }
+}
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `path` | `"./.opencode/rag_db"` | Path to the LanceDB database directory |
+
+### `retrieval`
+
+Controls how queries are matched against the index.
+
+```json
+{
+  "retrieval": {
+    "topK": 10,
+    "minScore": 0.5,
+    "hybridSearch": {
+      "enabled": true,
+      "keywordWeight": 0.4
+    }
+  }
+}
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `topK` | `10` | Default number of chunks fetched per query |
+| `minScore` | `0.5` | Minimum relevance score (0–1) |
+| `hybridSearch.enabled` | `true` | Enable combined TF×IDF + vector search |
+| `hybridSearch.keywordWeight` | `0.4` | Weight for keyword score in fusion: `(1-kw)*vScore + kw*kScore` |
+
+### `description`
+
+Controls LLM-based description generation for code chunks.
+
+```json
+{
+  "description": {
+    "enabled": true,
+    "provider": "ollama",
+    "baseUrl": "http://localhost:11434/api",
+    "apiKey": null,
+    "model": "qwen2.5:3b",
+    "timeoutMs": 60000,
+    "systemPrompt": "Describe code for embedding search in caveman style...",
+    "batchMaxChunks": 25,
+    "batchTimeoutMs": 120000,
+    "retryMax": 3,
+    "retryBaseDelayMs": 1000
+  }
+}
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `enabled` | `true` | Enable description-based embedding. Disable to embed raw code. |
+| `provider` | `"ollama"` | LLM provider (`"ollama"`, `"openai"`, `"anthropic"`, `"gemini"`) |
+| `model` | `"qwen2.5:3b"` | Model for description generation |
+| `systemPrompt` | *(see above)* | Customizable prompt for the LLM |
+| `timeoutMs` | `60000` | Timeout per LLM call |
+| `batchMaxChunks` | `25` | Maximum chunks per batch description call |
+| `batchTimeoutMs` | `120000` | Timeout for batch description calls |
+| `retryMax` | `3` | Retry attempts on failure |
+| `retryBaseDelayMs` | `1000` | Base delay for exponential backoff |
+
+When enabled, the embedded text is `description + "\n\n" + code content`. Even when disabled, descriptions include the file path and line range (e.g., `src/foo.ts, lines 10-42`). On LLM failure, falls back to embedding raw content.
+
+> **Recommendation:** Disable (`description.enabled: false`) if you don't have a dedicated GPU or want faster indexing.
+
+### `openCode`
+
+Controls the OpenCode plugin integration.
+
+```json
+{
+  "openCode": {
+    "enabled": true,
+    "maxContextChunks": 10,
+    "readOverride": true,
+    "readNoResultsBehavior": "hint",
+    "maxReadOutputChars": 50000,
+    "readRelatedFilesMax": 5,
+    "autoIndex": {
+      "enabled": true,
+      "debounceMs": 2000,
+      "intervalMs": 300000
+    },
+    "autoInject": {
+      "enabled": true,
+      "minScore": 0.75,
+      "maxChunks": 3,
+      "maxTokens": 2000
+    }
+  }
+}
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `enabled` | `true` | Enable the plugin |
+| `maxContextChunks` | `10` | Max chunks passed to context tool |
+| `readOverride` | `true` | Override OpenCode's built-in read to append RAG context |
+| `maxReadOutputChars` | `50000` | Max characters for read output |
+| `readRelatedFilesMax` | `5` | Max related file suggestions per read |
+| `autoIndex.enabled` | `true` | Auto-index changed files in background |
+| `autoIndex.debounceMs` | `2000` | Debounce delay for file change events |
+| `autoIndex.intervalMs` | `300000` | Periodic full-index interval (5 min) |
+| `autoInject.enabled` | `true` | Auto-inject high-confidence chunks on chat messages |
+| `autoInject.minScore` | `0.75` | Minimum score for auto-injection |
+| `autoInject.maxChunks` | `3` | Max auto-injected chunks |
+| `autoInject.maxTokens` | `2000` | Token budget for auto-injected context |
+
+### `logging`
+
+```json
+{
+  "logging": {
+    "level": "info",
+    "logFilePath": "./.opencode/opencode-rag.log"
+  }
+}
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `level` | `"info"` | `"debug"`, `"info"`, or `"error"` |
+| `logFilePath` | `"./.opencode/opencode-rag.log"` | Path to log file |
+
+### Custom Chunkers
+
+External chunkers can be injected without modifying the source:
+
+```json
+{
+  "chunkers": [
+    { "module": "./path/to/my-chunker.js", "extensions": [".xyz"] }
+  ]
+}
+```
+
+## Config File Discovery
+
+The CLI and plugin auto-detect the config file in this order:
+1. `--config <path>` CLI argument
+2. `./opencode-rag.json` (project root)
+3. `./.opencode/rag.json`
+
+## API Key Auto-Resolution
+
+If `embedding.provider` or `description.provider` is `"openai"` but no `apiKey` is set in `opencode-rag.json`, the plugin auto-resolves the key from OpenCode's own provider configuration:
+- `.opencode/opencode.json`
+- `opencode.json`
+- `~/.config/opencode/opencode.jsonc`
+
+JSONC comments are stripped before parsing.
