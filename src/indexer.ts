@@ -298,11 +298,13 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
         if (batchDesc && batchDesc.trim().length > 0) {
           chunk.description = batchDesc;
           logger.info(`  [desc] ${chunk.id} (batch): ${batchDesc.slice(0, 120)}${batchDesc.length > 120 ? "…" : ""}`);
+          logger.info(`  [chunk content] ${chunk.id}: ${chunk.content.slice(0, 120)}${chunk.content.length > 120 ? "…" : ""}`);
           textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
         } else {
           try {
             chunk.description = await options.descriptionProvider.generateDescription(chunk);
             logger.info(`  [desc] ${chunk.id} (llm): ${chunk.description.slice(0, 120)}${chunk.description.length > 120 ? "…" : ""}`);
+            logger.info(`  [chunk content] ${chunk.id}: ${chunk.content.slice(0, 120)}${chunk.content.length > 120 ? "…" : ""}`);
             textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
           } catch (err) {
             logger.warn(`Description generation failed for ${chunk.id}, falling back to content: ${(err as Error).message}`);
@@ -315,6 +317,7 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
         const relPath = path.relative(options.cwd, chunk.metadata.filePath).replace(/\\/g, "/");
         chunk.description = `${relPath}, lines ${chunk.metadata.startLine}-${chunk.metadata.endLine}`;
         logger.info(`  [desc] ${chunk.id}: ${chunk.description}`);
+        logger.info(`  [chunk content] ${chunk.id}: ${chunk.content.slice(0, 120)}${chunk.content.length > 120 ? "…" : ""}`);
         textToEmbed.push(docPrefix + chunk.description + "\n\n" + chunk.content);
       }
     }
