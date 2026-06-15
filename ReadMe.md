@@ -63,7 +63,7 @@ opencode-rag query "authentication middleware"
 
 ## Agent Discovery
 
-OpenCodeRAG registers tools that agents can invoke directly. Agents discover these tools via the OpenCode **skill system** — when `opencode-rag init` runs, it creates `.opencode/skills/opencode-rag/SKILL.md` which teaches agents the recommended workflow:
+OpenCodeRAG registers tools that agents can invoke directly. Agents discover these tools via the OpenCode **skill system** - when `opencode-rag init` runs, it creates `.opencode/skills/opencode-rag/SKILL.md` which teaches agents the recommended workflow:
 
 1. **Skeleton first** - `get_file_skeleton(filePath)` to orient in a file
 2. **Find usages** - `find_usages(symbolName)` before editing any symbol
@@ -86,7 +86,7 @@ OpenCodeRAG registers tools that agents can invoke directly. Agents discover the
 When using OpenCode, the plugin enhances your agent with three discovery mechanisms:
 
 ### 1. Skill-Based Discovery (Recommended)
-`opencode-rag init` creates `.opencode/skills/opencode-rag/SKILL.md` — an OpenCode skill that teaches agents the tool workflow. Agents load it on demand via the `skill` tool, keeping token overhead minimal.
+`opencode-rag init` creates `.opencode/skills/opencode-rag/SKILL.md` - an OpenCode skill that teaches agents the tool workflow. Agents load it on demand via the `skill` tool, keeping token overhead minimal.
 
 ### 2. Auto-Injection (Background Context)
 After every message you send, the plugin searches your vector-indexed codebase:
