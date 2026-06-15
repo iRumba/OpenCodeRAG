@@ -3,11 +3,16 @@ import { getWasmPath, type SupportedLanguage } from "tree-sitter-wasm";
 import { readFileSync } from "node:fs";
 
 let initialized = false;
+let initPromise: Promise<void> | null = null;
 
 export async function initParser(): Promise<void> {
   if (initialized) return;
-  await Parser.init();
-  initialized = true;
+  if (initPromise) return initPromise;
+  initPromise = Parser.init().then(() => {
+    initialized = true;
+    initPromise = null;
+  });
+  return initPromise;
 }
 
 const grammarCache = new Map<string, Language>();
