@@ -262,14 +262,26 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
           isModified = true;
         }
 
-        const chunks = await chunkFile(file.filePath, file.content);
-        if (chunks.length === 0) {
+        const chunks = await chunkFile(file.filePath, file.content).catch((err) => {
+          logger.warn(`  ${fileLabel} (chunking failed: ${(err as Error).message})`);
+          return null;
+        });
+
+        if (chunks === null || chunks.length === 0) {
+          if (chunks === null) {
+            // Chunking failed — keep previous index state if file was indexed before
+            if (previous) {
+              return { normalizedPath: file.normalizedPath, hash: file.hash, chunkCount: previous.chunkCount, fileLabel, isNew: false, isModified: false, isUnchanged: true, isEmpty: false, isTooSmall: false, isRemoved: false, hadChunks: true };
+            }
+            return { normalizedPath: file.normalizedPath, hash: file.hash, chunkCount: 0, fileLabel, isNew: false, isModified: false, isUnchanged: false, isEmpty: false, isTooSmall: false, isRemoved: true, hadChunks: false };
+          }
           logger.info(`  ${fileLabel} (0 chunks, removed from index)`);
           return { normalizedPath: file.normalizedPath, hash: file.hash, chunkCount: 0, fileLabel, isNew: false, isModified: false, isUnchanged: false, isEmpty: false, isTooSmall: false, isRemoved: true, hadChunks: false };
         }
 
         options.keywordIndex?.addChunks(chunks);
 
+        try {
         const docPrefix = options.config.embedding.documentPrefix ?? "";
         const textToEmbed: string[] = [];
 
@@ -338,6 +350,13 @@ export async function runIndexPass(options: RunIndexPassOptions): Promise<IndexR
           isRemoved: false,
           hadChunks: chunks.length > 0,
         };
+        } catch (err) {
+          logger.warn(`  ${fileLabel} (embed/store failed: ${(err as Error).message})`);
+          if (previous) {
+            return { normalizedPath: file.normalizedPath, hash: file.hash, chunkCount: previous.chunkCount, fileLabel, isNew: false, isModified: false, isUnchanged: true, isEmpty: false, isTooSmall: false, isRemoved: false, hadChunks: true };
+          }
+          return { normalizedPath: file.normalizedPath, hash: file.hash, chunkCount: 0, fileLabel, isNew: false, isModified: false, isUnchanged: false, isEmpty: false, isTooSmall: false, isRemoved: true, hadChunks: false };
+        }
       })
     )
   );
