@@ -6,7 +6,25 @@
 - **Ollama** (default) running locally, OR an OpenAI-compatible API endpoint
 - **OpenCode** (optional) for agent plugin features
 
-## Quick Install
+## Ollama Setup
+
+If you don't have Ollama installed, download it from [ollama.com](https://ollama.com) and start the service. Then pull the required model:
+
+```bash
+# Embedding model (required for vector search)
+ollama pull qwen3-embedding:0.6b
+
+# Description model (optional, for LLM-generated chunk descriptions)
+ollama pull qwen2.5:3b
+```
+
+OpenCodeRAG uses two models:
+- **Embedding model** — converts code chunks into vectors for semantic search. Configured via `embedding.model` (default: `qwen3-embedding:0.6b`).
+- **Description model** — generates natural-language descriptions of code chunks before embedding. Configured via `description.model` (default: `qwen2.5:3b`).
+
+> **Tip:** Smaller embedding models (≤3B) work well on CPU. For better quality with GPU, use a larger embedding model like `qwen3-embedding:1.7b` and activate description model usage in OpenCodeRAG config.
+
+## Install
 
 ```bash
 # Clone the repository
@@ -16,25 +34,12 @@ cd OpenCodeRAG
 # Install dependencies
 npm install --legacy-peer-deps
 
-# Build
-npm run build
-
-# (Optional) Install globally
+# Install RAG tools globally
 ./install.sh          # Linux/macOS
 .\install.ps1         # Windows
 ```
 
-## Global Installation via Script
-
-The `install.sh` / `install.ps1` scripts handle:
-
-1. `npm run build` + `npm pack` to produce a `.tgz`
-2. `npm install --prefix ~/.opencode/` and `--prefix ~/.config/opencode/`
-3. Adding `"opencode-rag-plugin"` to `~/.config/opencode/opencode.jsonc` plugin array
-4. Creating a CLI symlink for `opencode-rag`
-5. Cleaning up stale global plugin registrations
-
-> **Important:** The install scripts build from source (npm pack). They never call `opencode plugin <name> --global`, which would download the potentially stale npm-published version.
+> **Important:** The install scripts build from source (npm pack). They never call `opencode plugin <name> --global`, which would download a potentially stale npm-published version.
 
 ### Uninstall
 

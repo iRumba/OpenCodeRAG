@@ -90,6 +90,40 @@ Click a file row to navigate to the Chunks view filtered by that file.
 
 Side-by-side comparison of 2–3 chunks. Select chunks via checkboxes in the Chunks view, then switch to Compare to see them rendered in parallel with syntax highlighting.
 
+### Evaluate
+
+Session analytics dashboard for tracking token usage, costs, and RAG performance across OpenCode conversations.
+
+![Evaluate View](assets/eval.png)
+
+**Session List:** A table of all recorded sessions with columns:
+
+| Column | Description |
+|---|---|
+| checkbox | Select for comparison |
+| Session | Session title or ID |
+| Last Activity | Timestamp of last event |
+| Messages | Total message count |
+| Input Tokens | Input + cache read tokens |
+| Output Tokens | Output tokens generated |
+| Cost | Estimated API cost |
+| RAG Calls | Number of RAG context injections |
+| RAG Tokens | Tokens used for RAG context |
+| Model | Primary model used |
+
+**Actions:**
+- Click a row to view session details
+- Select 2 sessions via checkboxes and click **Compare Selected** for side-by-side comparison
+- Click the trash icon to delete a session
+
+**Session Detail:** Expanded view showing:
+
+- **KPI Cards:** Total Tokens, Input Tokens, Output Tokens, Cost, RAG Context Tokens
+- **Metrics:** Messages, Steps, RAG Injections, Avg Response time
+- **Tool Calls:** Breakdown of tool usage (bash, read, edit, webfetch, grep, glob, task, search_semantic, question)
+- **Models Used:** List of models active in the session
+- **Event Timeline:** Chronological log of session events with timestamps
+
 ## File Tree Sidebar
 
 A collapsible directory tree in the left sidebar:
@@ -120,5 +154,8 @@ The web server exposes a REST API under `/api/`:
 | `/api/chunks/:id` | GET | Single chunk by ID |
 | `/api/search?q=&topK=` | GET | Keyword search via KeywordIndex |
 | `/api/compare?ids=` | GET | Fetch multiple chunks for side-by-side view |
+| `/api/eval/sessions` | GET | All recorded sessions with summary stats |
+| `/api/eval/sessions/:id` | GET | Single session detail with events |
+| `/api/eval/sessions/:id` | DELETE | Delete a recorded session |
 
 All endpoints return JSON with `Access-Control-Allow-Origin: *`.
