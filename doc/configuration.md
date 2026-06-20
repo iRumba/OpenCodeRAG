@@ -86,10 +86,43 @@ Controls file discovery and chunking behavior.
 |---|---|---|
 | `includeExtensions` | *(40+ extensions)* | File extensions to index |
 | `excludeDirs` | *(7 dirs)* | Directories to skip |
+| `ragignoreEnabled` | `true` | Enable `.ragignore` file support. When enabled, `.ragignore` files (`.gitignore`-compatible syntax) are discovered hierarchically and merged with `excludeDirs`. Set to `false` to disable. |
 | `chunkOverlap` | `0` | Overlap between adjacent chunks |
 | `minFileSizeBytes` | `0` | Skip files smaller than this (files below threshold are also removed from index) |
 | `concurrency` | `4` | Max files processed in parallel during indexing. Higher values speed up indexing but increase memory and embedding API pressure |
 | `embedBatchSize` | `50` | Texts per embedding API call. Larger batches reduce round-trips. Ollama supports up to ~100 |
+
+#### `.ragignore` Files
+
+OpenCodeRAG supports `.ragignore` files with the same syntax as `.gitignore` (gitignore spec 2.22.1). These files allow you to exclude files and directories from indexing using glob patterns, beyond what `excludeDirs` supports.
+
+**Key behaviors:**
+- `.ragignore` is discovered hierarchically — a file placed in a directory applies to that directory and all subdirectories
+- Patterns from parent directories are combined with child `.ragignore` files, with child patterns taking precedence (negation patterns using `!` can override parent rules)
+- `.ragignore` patterns are merged with `excludeDirs` via union — a file is excluded if either mechanism matches
+- `.ragignore` files themselves are never indexed
+- Setting `ragignoreEnabled: false` disables all `.ragignore` processing
+
+**Default `.ragignore` (created by `opencode-rag init`):**
+```
+# Directories
+build/
+dist/
+__pycache__/
+.venv/
+
+# File extensions
+*.log
+*.snap
+*.min.js
+
+# Specific files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+```
+
+**Performance note:** `.ragignore` scanning happens once per directory during tree traversal, not per file. For file watching (`createWatchIgnore`), only the root `.ragignore` is checked to avoid per-event overhead — changes to subdirectory `.ragignore` files will trigger a reindex pass.
 
 ### `vectorStore`
 

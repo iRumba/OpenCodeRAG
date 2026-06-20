@@ -874,6 +874,7 @@ function generateDefaultConfigJson(): string {
       indexing: {
         includeExtensions: DEFAULT_CONFIG.indexing.includeExtensions,
         excludeDirs: DEFAULT_CONFIG.indexing.excludeDirs,
+        ragignoreEnabled: true,
         chunkOverlap: DEFAULT_CONFIG.indexing.chunkOverlap,
         minFileSizeBytes: DEFAULT_CONFIG.indexing.minFileSizeBytes,
         concurrency: DEFAULT_CONFIG.indexing.concurrency,
@@ -1049,6 +1050,34 @@ program
       console.log(`  ${configExists ? c.updated("Updated:") : c.created("Created:")} opencode-rag.json`);
     } else {
       console.log(`  ${c.exists("Exists:")}   opencode-rag.json`);
+    }
+
+    // Generate .ragignore file
+    const ragignorePath = path.join(cwd, ".ragignore");
+    const ragignoreContent =
+      "# .ragignore — files and directories to exclude from OpenCodeRAG indexing\n" +
+      "# Syntax follows .gitignore conventions (glob patterns, negation with !)\n" +
+      "#\n" +
+      "# Directories (trailing slash):\n" +
+      "build/\n" +
+      "dist/\n" +
+      "__pycache__/\n" +
+      ".venv/\n" +
+      "\n" +
+      "# Files by extension:\n" +
+      "*.log\n" +
+      "*.snap\n" +
+      "*.min.js\n" +
+      "\n" +
+      "# Specific files:\n" +
+      "package-lock.json\n" +
+      "yarn.lock\n" +
+      "pnpm-lock.yaml\n";
+    if (!existsSync(ragignorePath) || options.force) {
+      writeFileSync(ragignorePath, ragignoreContent, "utf-8");
+      console.log(`  ${existsSync(ragignorePath) ? c.updated("Updated:") : c.created("Created:")} .ragignore`);
+    } else {
+      console.log(`  ${c.exists("Exists:")}   .ragignore`);
     }
 
     if (!options.skipInstall) {

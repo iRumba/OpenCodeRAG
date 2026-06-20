@@ -1,5 +1,6 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -77,6 +78,18 @@ describe("watcher", () => {
     // Regular source files should NOT be ignored
     assert.equal(ignore(path.join(workspaceDir, "src", "index.ts")), false);
     assert.equal(ignore(path.join(workspaceDir, "index.ts")), false);
+  });
+
+  it("createWatchIgnore returns true for files matching .ragignore patterns", () => {
+    writeFileSync(path.join(workspaceDir, ".ragignore"), "*.log\n");
+
+    const config = testConfig();
+    const ignore = createWatchIgnore(workspaceDir, config, storeDir);
+
+    // .ragignore pattern should exclude .log files
+    assert.equal(ignore(path.join(workspaceDir, "src", "debug.log")), true);
+    // Non-log files should NOT be ignored
+    assert.equal(ignore(path.join(workspaceDir, "src", "index.ts")), false);
   });
 
   it("can start and gracefully close background indexer", async () => {

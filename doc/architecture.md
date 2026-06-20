@@ -136,7 +136,8 @@ See [doc/chunking.md](chunking.md) for the full language matrix.
 | File | Role |
 |---|---|
 | `src/plugin.ts` | Main plugin: context tool, `chat.message` hook, auto-injection, read override |
-| `src/indexer.ts` | `runIndexPass()`, `scanWorkspace()`, `createWatchPassScheduler()`, `createWatchIgnore()` |
+| `src/ragignore.ts` | `.ragignore` file parser — `loadRagignoreFile()`, `collectRagignorePatterns()`, `buildFilterForPath()`. Uses the `ignore` package for gitignore-compatible pattern matching. |
+| `src/indexer.ts` | `runIndexPass()`, `scanWorkspace()`, `createWatchPassScheduler()`, `createWatchIgnore()` — file scanning with `.ragignore` hierarchical filtering |
 | `src/watcher.ts` | `createBackgroundIndexer()` — chokidar watcher + debounced scheduler + periodic timer |
 
 ### Web UI (`src/web/`)
@@ -153,7 +154,7 @@ See [Web UI](webui.md) for the full dashboard reference.
 ## Pipeline Stages
 
 ### 1. Scanning (`scanWorkspace` in `indexer.ts`)
-Walks the workspace directory tree, filtering by `includeExtensions` and `excludeDirs`. Reads text files as UTF-8, binary files (PDF, DOCX, DOC, Excel) via extraction libraries.
+Walks the workspace directory tree, filtering by `includeExtensions` and `excludeDirs`, and applying `.ragignore` patterns hierarchically. Reads text files as UTF-8, binary files (PDF, DOCX, DOC, Excel) via extraction libraries.
 
 ### 2. Chunking (`chunkFile` in `chunker/factory.ts`)
 Dispatches to the appropriate `Chunker` based on file extension. Each chunker splits content into semantically meaningful units (AST nodes, headings, paragraphs, etc.).

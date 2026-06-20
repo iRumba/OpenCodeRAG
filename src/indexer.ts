@@ -6,6 +6,8 @@ import { extractPdfText } from "./chunker/pdf.js";
 import { extractDocxText } from "./chunker/docx.js";
 import { extractDocText } from "./chunker/doc.js";
 import { extractExcelText } from "./chunker/excel.js";
+import ignore, { Ignore } from "ignore";
+import { RAGIGNORE_FILENAME, buildFilterForPath, extendIgnoreFilter } from "./ragignore.js";
 import type { RagConfig } from "./core/config.js";
 import {
   computeFileHash,
@@ -84,21 +86,33 @@ function createLogger(logger?: Partial<Logger>): Logger {
 export async function walkFiles(
   dir: string,
   extensions: Set<string>,
-  excludeDirs: Set<string>
+  excludeDirs: Set<string>,
+  cwd?: string,
+  ignoreFilter?: Ignore
 ): Promise<string[]> {
   const results: string[] = [];
+  const resolvedCwd = cwd ?? dir;
   const entries = await fs.readdir(dir, { withFileTypes: true });
 
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
 
+    if (entry.name === RAGIGNORE_FILENAME) continue;
+
     if (entry.isDirectory()) {
       if (excludeDirs.has(entry.name)) continue;
       if (entry.name.startsWith(".") && !extensions.size) continue;
-      results.push(...(await walkFiles(fullPath, extensions, excludeDirs)));
+
+      const relDirPath = path.relative(resolvedCwd, fullPath).replace(/\\/g, "/");
+      if (ignoreFilter?.ignores(relDirPath)) continue;
+
+      const subFilter = extendIgnoreFilter(fullPath, ignoreFilter);
+      results.push(...(await walkFiles(fullPath, extensions, excludeDirs, resolvedCwd, subFilter ?? ignoreFilter)));
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();
       if (extensions.has(ext)) {
+        const relFilePath = path.relative(resolvedCwd, fullPath).replace(/\\/g, "/");
+        if (ignoreFilter?.ignores(relFilePath)) continue;
         results.push(fullPath);
       }
     }
@@ -108,10 +122,15 @@ export async function walkFiles(
 }
 
 async function scanWorkspace(cwd: string, config: RagConfig): Promise<WorkspaceFile[]> {
+  const ragignoreFilter = config.indexing.ragignoreEnabled !== false
+    ? buildFilterForPath(cwd, cwd)
+    : undefined;
   const files = await walkFiles(
     cwd,
     new Set(config.indexing.includeExtensions),
-    new Set(config.indexing.excludeDirs)
+    new Set(config.indexing.excludeDirs),
+    cwd,
+    ragignoreFilter
   );
 
   const isPdf = (fp: string) => fp.toLowerCase().endsWith(".pdf");
@@ -550,6 +569,9 @@ export function createWatchIgnore(
 ): (watchedPath: string) => boolean {
   const manifestPath = manifestPathFor(storePath);
   const excludeDirs = new Set(config.indexing.excludeDirs);
+  const ragignoreFilter = config.indexing.ragignoreEnabled !== false
+    ? buildFilterForPath(cwd, cwd)
+    : undefined;
 
   return (watchedPath: string): boolean => {
     const resolved = path.resolve(watchedPath);
@@ -559,6 +581,15 @@ export function createWatchIgnore(
     const relative = path.relative(cwd, resolved);
     if (!relative || relative.startsWith("..")) return false;
     const segments = relative.split(path.sep);
-    return segments.some((segment) => excludeDirs.has(segment));
+    if (segments.some((segment) => excludeDirs.has(segment))) return true;
+
+    // Check .ragignore — catches root-level patterns; subdirectory changes
+    // trigger reindexing which uses walkFiles() with full hierarchical support.
+    if (ragignoreFilter) {
+      const normalizedRelative = relative.replace(/\\/g, "/");
+      if (ragignoreFilter.ignores(normalizedRelative)) return true;
+    }
+
+    return false;
   };
 }

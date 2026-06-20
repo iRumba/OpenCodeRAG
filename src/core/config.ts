@@ -69,6 +69,7 @@ export interface RagConfig {
   indexing: {
     includeExtensions: string[];
     excludeDirs: string[];
+    ragignoreEnabled?: boolean;
     chunkOverlap: number;
     minFileSizeBytes?: number;
     concurrency: number;
@@ -169,6 +170,7 @@ export const DEFAULT_CONFIG: RagConfig = {
       "__pycache__",
       ".venv",
     ],
+    ragignoreEnabled: true,
     chunkOverlap: 0,
     minFileSizeBytes: 0,
     concurrency: 4,
