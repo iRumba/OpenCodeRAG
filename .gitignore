@@ -26,3 +26,9 @@ Thumbs.db
 *~
 .opencode/opencode-rag.log
 .npmrc
+
+# IDE
+.vscode
+.git
+
+opencode-rag.json

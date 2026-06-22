@@ -2,7 +2,7 @@
   "embedding": {
     "provider": "ollama",
     "baseUrl": "http://localhost:11434/api",
-    "model": "qwen3-embedding:0.6b",
+    "model": "embeddinggemma:latest",
     "timeoutMs": 60000,
     "documentPrefix": "",
     "queryPrefix": ""

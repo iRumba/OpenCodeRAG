@@ -1,0 +1,27 @@
+# .ragignore — files and directories to exclude from OpenCodeRAG indexing
+# Syntax follows .gitignore conventions (glob patterns, negation with !)
+#
+# Directories (trailing slash):
+build/
+dist/
+__pycache__/
+.venv/
+
+# Files by extension:
+*.log
+*.snap
+*.min.js
+
+# Specific files:
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+AGENTS.md
+opencode.json
+opencode.jsonc
+opencode-rag.json
+tsconfig.build.json
+
+# IDE
+.vscode
+.git
